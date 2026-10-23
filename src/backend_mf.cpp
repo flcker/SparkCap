@@ -4,6 +4,7 @@
 //       OnReadSample 持续拉流并保持 buffer Lock，getFrame 返回零拷贝描述。
 
 #include "backend_mf.h"
+#include "frame_queue.h"
 #include "str_util.h"
 
 #include <mfapi.h>
@@ -70,6 +71,41 @@ bool pixFmtFromGuid(const GUID& g, sparkcap_pixfmt_t* out)
 
 // ---- MF 会话 ----
 
+// 队列槽：持 IMFMediaBuffer 引用并保持 Lock（帧数据有效期内稳定）。
+// 移动语义：Unlock 义务随所有权转移（源槽置空后不再负责）。
+struct MfQueueSlot {
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+    sparkcap_frame_t frame = {};  // data 指向 buffer 的锁定内存
+
+    void release()
+    {
+        if (buffer != nullptr && frame.data != nullptr)
+            buffer->Unlock();
+        buffer.Reset();
+        frame = {};
+    }
+    MfQueueSlot() = default;
+    ~MfQueueSlot() { release(); }
+    MfQueueSlot(MfQueueSlot&& o) noexcept
+        : buffer(std::move(o.buffer))
+        , frame(o.frame)
+    {
+        o.frame = {};
+    }
+    MfQueueSlot& operator=(MfQueueSlot&& o) noexcept
+    {
+        if (this != &o) {
+            release();
+            buffer = std::move(o.buffer);
+            frame = o.frame;
+            o.frame = {};
+        }
+        return *this;
+    }
+    MfQueueSlot(const MfQueueSlot&) = delete;
+    MfQueueSlot& operator=(const MfQueueSlot&) = delete;
+};
+
 class MfSession final : public ICaptureSession {
     // IMFSourceReaderCallback 的独立 COM 壳：引用计数归 MF/reader 管理，
     // MfSession 析构前先 Flush + 释放 reader，保证回调不再触达 m_owner。
@@ -130,7 +166,7 @@ private:
     HRESULT onFlush();
 
     int selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps);
-    void unlockFrameLocked();
+    bool popFrameLocked(sparkcap_frame_t* outFrame);
     void invokeCallbackLocked();
     bool requestNextLocked();
 
@@ -139,13 +175,13 @@ private:
     Microsoft::WRL::ComPtr<ReaderCallback>   m_callback;
     std::string m_path;  // 设备符号链接：stop 释放 source 后供 start 重建（Spec §4.5-2 重启）
 
-    HANDLE m_frameEvent = nullptr;  // auto-reset：新帧/流错误
+    HANDLE m_frameEvent = nullptr;  // auto-reset：新帧/流错误/stop 唤醒
     HANDLE m_flushEvent = nullptr;  // Flush 完成
 
     std::mutex m_mutex;
-    sparkcap_frame_t m_frame = {};              // 当前帧描述（width/stride/pixfmt 在 start 时定）
-    Microsoft::WRL::ComPtr<IMFMediaBuffer> m_lockedBuffer;  // 帧有效期内保持 Lock
-    BYTE* m_lockedData = nullptr;
+    sparkcap_frame_t m_frame = {};  // 格式骨架（w/h/pixfmt/stride 在 start 时定，槽帧复用）
+    FrameQueue<MfQueueSlot> m_queue{8};  // 环形队列（M2b，N2：按序消费不丢帧）
+    MfQueueSlot m_consumed;               // 当前交付应用的帧（下一次 getFrame/stop 时释放）
     std::atomic<bool> m_running{false};
     std::atomic<int> m_activeCallbacks{0};      // 在途回调计数（stop 等待，Spec §4.4-4）
     bool m_streamFailed = false;
@@ -233,10 +269,27 @@ int MfSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void
     return SPARKCAP_ERR_OK;
 }
 
+// 队列非空则按序弹出（consumed 的移动赋值自动释放上一帧 → Spec §4.3 有效期语义）
+bool MfSession::popFrameLocked(sparkcap_frame_t* outFrame)
+{
+    if (!m_queue.pop(&m_consumed))
+        return false;
+    *outFrame = m_consumed.frame;
+    return true;
+}
+
 int MfSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
 {
     if (!m_running.load())
         return SPARKCAP_ERR_STREAM_LOST;  // 未启动或已 stop（Spec §4.5-2）
+
+    {   // 队列有帧直接取（环形缓冲，N2：不丢帧）
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (m_streamFailed)
+            return SPARKCAP_ERR_STREAM_LOST;
+        if (popFrameLocked(outFrame))
+            return SPARKCAP_ERR_OK;
+    }
 
     const DWORD wait = (timeoutMs < 0) ? INFINITE : static_cast<DWORD>(timeoutMs);
     const DWORD wr = WaitForSingleObject(m_frameEvent, wait);
@@ -244,12 +297,15 @@ int MfSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
         return SPARKCAP_ERR_TIMEOUT;
     if (wr != WAIT_OBJECT_0)
         return SPARKCAP_ERR_INTERNAL;
+    if (!m_running.load())
+        return SPARKCAP_ERR_STREAM_LOST;  // stop 唤醒
 
     std::lock_guard<std::mutex> lk(m_mutex);
-    if (m_streamFailed || m_lockedData == nullptr)
+    if (m_streamFailed)
         return SPARKCAP_ERR_STREAM_LOST;
-    *outFrame = m_frame;  // data 指向内部缓冲，有效至下次 getFrame/stop（Spec §4.3）
-    return SPARKCAP_ERR_OK;
+    if (popFrameLocked(outFrame))
+        return SPARKCAP_ERR_OK;
+    return SPARKCAP_ERR_STREAM_LOST;
 }
 
 int MfSession::stop()
@@ -269,8 +325,11 @@ int MfSession::stop()
     while (m_activeCallbacks.load() > 0)
         Sleep(1);  // 在途回调结束前不销毁资源
 
+    SetEvent(m_frameEvent);  // 唤醒等帧的消费者（醒来后按 m_running 返回 STREAM_LOST）
+
     std::lock_guard<std::mutex> lk(m_mutex);
-    unlockFrameLocked();
+    m_queue.clear();          // 槽析构释放各帧的 Lock 与引用
+    m_consumed = MfQueueSlot();
     m_reader.Reset();
     if (m_source != nullptr) {
         m_source->Shutdown();  // 与 start 对称：重启时按 m_path 重建
@@ -300,14 +359,15 @@ HRESULT MfSession::onSample(HRESULT hrStatus, DWORD streamFlags, LONGLONG timest
             SUCCEEDED(buf->Lock(&data, nullptr, &len)) && data != nullptr)
         {
             std::lock_guard<std::mutex> lk(m_mutex);
-            unlockFrameLocked();            // 释放上一帧的 Lock
-            m_lockedBuffer = buf;           // 持引用 + Lock，保证有效期内数据稳定
-            m_lockedData = data;
-            m_frame.data = data;
-            m_frame.size = static_cast<int>(len);
-            m_frame.timestamp = timestamp;
+            // 入队（M2b 环形队列）：槽持引用 + Lock，满时覆盖最旧（自动 Unlock）
+            MfQueueSlot* slot = m_queue.pushEmpty();
+            slot->buffer = buf;
+            slot->frame = m_frame;  // 复用格式骨架（w/h/pixfmt/stride）
+            slot->frame.data = data;
+            slot->frame.size = static_cast<int>(len);
+            slot->frame.timestamp = timestamp;
             SetEvent(m_frameEvent);
-            invokeCallbackLocked();         // 回调模式（F5）：采集线程直接交付，帧仅回调期间有效
+            invokeCallbackLocked();  // 回调模式（F5）：交付队尾帧，仅回调期间有效
         }
     }
 
@@ -420,26 +480,18 @@ int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fm
     return SPARKCAP_ERR_OK;
 }
 
-void MfSession::unlockFrameLocked()
-{
-    if (m_lockedBuffer != nullptr && m_lockedData != nullptr)
-        m_lockedBuffer->Unlock();
-    m_lockedBuffer.Reset();
-    m_lockedData = nullptr;
-    m_frame.data = nullptr;
-}
-
-// 持锁调用用户回调：回调期间帧数据稳定；getFrame 会排队至回调返回。
-// 用户回调抛出的异常在此吞掉（C 回调契约），不中断采集泵。
+// 持锁调用用户回调：交付队尾（最新）帧，持锁保证回调期间槽不被移走/覆盖；
+// getFrame 会排队至回调返回。用户回调抛出的异常在此吞掉（C 回调契约）。
 void MfSession::invokeCallbackLocked()
 {
-    if (m_frameCallback == nullptr)
+    const MfQueueSlot* slot = m_queue.newest();
+    if (m_frameCallback == nullptr || slot == nullptr)
         return;
     ++m_activeCallbacks;
     {
         CallbackGuard guard;  // 回调内 stop/close 返回 IN_CALLBACK（Spec §4.4-5）
         try {
-            m_frameCallback(m_callbackDevice, &m_frame, m_callbackUserdata);
+            m_frameCallback(m_callbackDevice, &slot->frame, m_callbackUserdata);
         } catch (...) {
         }
     }

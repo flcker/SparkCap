@@ -6,6 +6,8 @@
 
 ### Added
 
+- M2b（M2 收口）：拉取模式环形队列（`src/frame_queue.h` 模板，技术选型 §4 统一帧输出层）——8 槽环形缓冲：满丢最旧（保最新）、按序消费不丢帧（N2）、空时事件唤醒；MF 槽持 Lock 的 buffer 引用（移动语义转移 Unlock 义务），DShow 槽持拷贝缓冲（vector 移动保指针稳定）；getFrame 改两段式（先非阻塞取、空则等事件）；stop 唤醒等待者；实测 MF 50 帧时间戳零跳变（gaps=0，N2 ✓）
+- M2c：延迟/抖动数据（N3）——demo 回调模式 200 帧抖动统计：MF min=28.6ms / max=48.9ms / avg=40.0ms（max/avg=1.2），DShow avg=93ms / max/avg=2.8（YY开播 空闲输出不规律，属驱动行为）；N1 端到端延迟需拍屏法实测，留 M4 验收
 - M2a：回调模式（F5 落地）——`sparkcap_set_frame_callback` 真实现：采集线程直接交付（MF OnReadSample 线程 / DShow BufferCB 线程），帧仅回调期间有效（Spec §4.3-1）；`g_inFrameCallback` thread_local 守卫：回调内 stop/close/set_frame_callback 返回 `SPARKCAP_ERR_IN_CALLBACK`（Spec §4.4-5）；MF stop 以原子计数等待在途回调返回（Spec §4.4-4），DShow 经 `IMediaControl::Stop` 同步等待；用户回调异常在库边界吞掉不中断采集；实测双后端各 20 帧回调、守卫返回 11、stop→restart 正常
 - M1d（M1 收口）：能力查询与格式偏好——`sparkcap_get_formats`（F11，两段式）：MF 经临时同步 SourceReader 枚举 native 类型，DShow 经 `IAMStreamConfig::GetStreamCaps`；帧率/格式偏好：MF 类型选择增强（w/h 完全匹配组内取 fps 最近），DShow 组图前 `SetFormat` 选定（失败回落默认协商）；实测 MF 偏好 640×480、DShow 偏好 1280×720 精确生效，能力列表 e2eSoft 6 条 / YY开播 264 条
 - stride 行序符号语义统一（MF/DShow 一致）：正 = top-down，负 = bottom-up（RGB 系通常为负）；`size` = |stride| × height

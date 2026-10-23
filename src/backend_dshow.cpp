@@ -5,6 +5,7 @@
 // 故 DShow 路径存在一次帧拷贝——兜底后端的取舍，零拷贝属 M2 的 MF/D3D11 路径。
 
 #include "backend_dshow.h"
+#include "frame_queue.h"
 #include "str_util.h"
 
 #include <dshow.h>
@@ -138,6 +139,13 @@ bool formatFromVideoInfo(const AM_MEDIA_TYPE* pmt, sparkcap_device_format_t* out
 
 // ---- DShow 会话 ----
 
+// 队列槽：独立帧缓冲（SampleGrabber 回调缓冲仅回调内有效，须拷贝）。
+// vector 移动保证 data 指针稳定（frame.data 随缓冲转移仍有效）。
+struct DsQueueSlot {
+    std::vector<BYTE> data;
+    sparkcap_frame_t frame = {};  // data 指向本槽缓冲
+};
+
 class DshowSession final : public ICaptureSession {
     // ISampleGrabberCB 的独立 COM 壳：引用计数归 graph 管理；
     // DshowSession 析构前先 Stop + SetCallback(nullptr)，保证回调不再触达 m_owner。
@@ -195,6 +203,7 @@ private:
     HRESULT onBuffer(double sampleTime, BYTE* buffer, long bufferLen);
     int buildGraphLocked();  // 组装 capture → grabber 图并解析输出格式
     void applyFormatPreferenceLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps);
+    bool popFrameLocked(sparkcap_frame_t* outFrame);
     void invokeCallbackLocked();
 
     Microsoft::WRL::ComPtr<IBaseFilter>         m_sourceFilter;
@@ -205,10 +214,11 @@ private:
     Microsoft::WRL::ComPtr<IMediaControl>       m_control;
     Microsoft::WRL::ComPtr<GrabberCB>           m_callback;
 
-    HANDLE m_frameEvent = nullptr;  // auto-reset：新帧
+    HANDLE m_frameEvent = nullptr;  // auto-reset：新帧/stop 唤醒
     std::mutex m_mutex;
-    std::vector<BYTE> m_frameBuffer;  // BufferCB 拷贝目标（帧有效期内稳定）
-    sparkcap_frame_t m_frame = {};
+    sparkcap_frame_t m_frame = {};  // 格式骨架（w/h/pixfmt/stride 在组图时定）
+    FrameQueue<DsQueueSlot> m_queue{8};  // 环形队列（M2b，N2：按序消费不丢帧）
+    DsQueueSlot m_consumed;              // 当前交付应用的帧（下一次 getFrame/stop 时释放）
     std::atomic<bool> m_running{false};
     bool m_built = false;
 
@@ -277,10 +287,25 @@ int DshowSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, v
     return SPARKCAP_ERR_OK;
 }
 
+// 队列非空则按序弹出（consumed 槽的缓冲随之转移，帧有效期至下一次 pop）
+bool DshowSession::popFrameLocked(sparkcap_frame_t* outFrame)
+{
+    if (!m_queue.pop(&m_consumed))
+        return false;
+    *outFrame = m_consumed.frame;
+    return true;
+}
+
 int DshowSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
 {
     if (!m_running.load())
         return SPARKCAP_ERR_STREAM_LOST;
+
+    {   // 队列有帧直接取（环形缓冲，N2：不丢帧）
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (popFrameLocked(outFrame))
+            return SPARKCAP_ERR_OK;
+    }
 
     const DWORD wait = (timeoutMs < 0) ? INFINITE : static_cast<DWORD>(timeoutMs);
     const DWORD wr = WaitForSingleObject(m_frameEvent, wait);
@@ -288,12 +313,13 @@ int DshowSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
         return SPARKCAP_ERR_TIMEOUT;
     if (wr != WAIT_OBJECT_0)
         return SPARKCAP_ERR_INTERNAL;
+    if (!m_running.load())
+        return SPARKCAP_ERR_STREAM_LOST;  // stop 唤醒
 
     std::lock_guard<std::mutex> lk(m_mutex);
-    if (m_frameBuffer.empty())
-        return SPARKCAP_ERR_STREAM_LOST;
-    *outFrame = m_frame;  // data 指向内部缓冲，有效至下次 getFrame/stop（Spec §4.3）
-    return SPARKCAP_ERR_OK;
+    if (popFrameLocked(outFrame))
+        return SPARKCAP_ERR_OK;
+    return SPARKCAP_ERR_STREAM_LOST;
 }
 
 int DshowSession::stop()
@@ -309,7 +335,11 @@ int DshowSession::stop()
     if (m_control != nullptr)
         m_control->Stop();
 
+    SetEvent(m_frameEvent);  // 唤醒等帧的消费者（醒来后按 m_running 返回 STREAM_LOST）
+
     std::lock_guard<std::mutex> lk(m_mutex);
+    m_queue.clear();
+    m_consumed = DsQueueSlot();
     m_frame.data = nullptr;
     m_frame.size = 0;
     m_frame.timestamp = 0;
@@ -323,29 +353,31 @@ HRESULT DshowSession::onBuffer(double sampleTime, BYTE* buffer, long bufferLen)
     std::lock_guard<std::mutex> lk(m_mutex);
     if (!m_running.load())
         return S_OK;
-    // 压缩格式帧长可变，按需扩展
-    if (static_cast<size_t>(bufferLen) > m_frameBuffer.size())
-        m_frameBuffer.resize(static_cast<size_t>(bufferLen));
-    memcpy(m_frameBuffer.data(), buffer, static_cast<size_t>(bufferLen));
-    m_frame.data = m_frameBuffer.data();
-    m_frame.size = bufferLen;
-    m_frame.timestamp = static_cast<int64_t>(sampleTime * 1e7);  // 秒 → 100ns
+
+    // 入队（M2b 环形队列）：拷贝进槽缓冲（容量复用），满时覆盖最旧
+    DsQueueSlot* slot = m_queue.pushEmpty();
+    slot->data.assign(buffer, buffer + bufferLen);
+    slot->frame = m_frame;  // 复用格式骨架（w/h/pixfmt/stride）
+    slot->frame.data = slot->data.data();
+    slot->frame.size = bufferLen;
+    slot->frame.timestamp = static_cast<int64_t>(sampleTime * 1e7);  // 秒 → 100ns
     SetEvent(m_frameEvent);
-    invokeCallbackLocked();  // 回调模式（F5）：graph 流线程直接交付，帧仅回调期间有效
+    invokeCallbackLocked();  // 回调模式（F5）：交付队尾帧，仅回调期间有效
     return S_OK;
 }
 
-// 持锁调用用户回调：回调期间帧缓冲稳定；getFrame 排队至回调返回。
-// IMediaControl::Stop 同步等待流线程，在途回调返回后 stop 才完成（Spec §4.4-4）。
-// 用户回调抛出的异常在此吞掉（C 回调契约），不中断采集。
+// 持锁调用用户回调：交付队尾（最新）帧，持锁保证回调期间槽不被移走/覆盖；
+// getFrame 排队至回调返回。IMediaControl::Stop 同步等待流线程，
+// 在途回调返回后 stop 才完成（Spec §4.4-4）。用户回调异常在此吞掉。
 void DshowSession::invokeCallbackLocked()
 {
-    if (m_frameCallback == nullptr)
+    const DsQueueSlot* slot = m_queue.newest();
+    if (m_frameCallback == nullptr || slot == nullptr)
         return;
     {
         CallbackGuard guard;  // 回调内 stop/close 返回 IN_CALLBACK（Spec §4.4-5）
         try {
-            m_frameCallback(m_callbackDevice, &m_frame, m_callbackUserdata);
+            m_frameCallback(m_callbackDevice, &slot->frame, m_callbackUserdata);
         } catch (...) {
         }
     }
@@ -488,13 +520,7 @@ int DshowSession::buildGraphLocked()
         m_frame.stride = stride;
     }
 
-    // 预分配帧缓冲（压缩格式按首帧实际长度再扩展）
-    const DWORD imgSize = vi->bmiHeader.biSizeImage;
-    m_frameBuffer.resize((pf == SPARKCAP_PIXFMT_MJPG || imgSize == 0)
-                             ? static_cast<size_t>(m_frame.stride > 0
-                                                       ? m_frame.stride * h
-                                                       : 64 * 1024)
-                             : static_cast<size_t>(imgSize));
+    // 帧缓冲由队列槽在首帧 assign 时按实际长度分配（压缩格式帧长可变）
 
     CoTaskMemFree(conn.pbFormat);
 
