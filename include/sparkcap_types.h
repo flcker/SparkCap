@@ -38,6 +38,7 @@ typedef enum sparkcap_pixfmt_t {
     SPARKCAP_PIXFMT_I420    = 3,
     SPARKCAP_PIXFMT_MJPG    = 4,
     SPARKCAP_PIXFMT_RGB32   = 5,  /* 仅当设备原生输出 */
+    SPARKCAP_PIXFMT_RGB24   = 6,  /* DShow 虚拟摄像头常见原生输出 */
 } sparkcap_pixfmt_t;
 
 /* 错误码（Spec §4.2；函数返回 int，值域为本枚举） */

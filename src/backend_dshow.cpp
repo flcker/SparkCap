@@ -1,18 +1,50 @@
-// DShow 后端 —— 设备枚举（M1a）。
-// SystemDeviceEnum 枚举 CLSID_VideoInputDeviceCategory；DevicePath 与 MF 的
-// symbolic link 同源，用于跨后端去重。部分软件虚拟设备无 DevicePath（留空，
-// 不参与去重，由 M1c 的打开路径处理）。
+// DShow 后端 —— 设备枚举（M1a）+ 采集会话（M1c）。
+// 枚举：SystemDeviceEnum / CLSID_VideoInputDeviceCategory，DevicePath 用于跨后端去重。
+// 会话：ISampleGrabber 回调（BufferCB）+ 内部帧拷贝缓冲。
+// SampleGrabber 的回调缓冲仅回调期间有效（不同于 MF 的 Lock 持有），
+// 故 DShow 路径存在一次帧拷贝——兜底后端的取舍，零拷贝属 M2 的 MF/D3D11 路径。
 
 #include "backend_dshow.h"
 #include "str_util.h"
 
 #include <dshow.h>
-#include <oleauto.h>
+#include "qedit_min.h"  // ISampleGrabber / ISampleGrabberCB（qedit.h 已从新 SDK 移除）
 
 #include <wrl/client.h>
 
+#include <atomic>
+#include <cstring>
+#include <mutex>
+#include <vector>
+
 namespace sparkcap {
 namespace {
+
+// ---- subtype ↔ pixfmt ----
+
+// 本 SDK 的 uuids.h 无 MEDIASUBTYPE_I420（DShow 传统用 IYUV），按 FOURCC GUID 模板自定义：
+// Data1 = 'I420'，标准后缀 {0000-0010-8000-00AA-00389B71}
+static const GUID kMediasubtypeI420 = {
+    0x30323449, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
+
+bool pixFmtFromSubtype(const GUID& g, sparkcap_pixfmt_t* out)
+{
+    if (IsEqualGUID(g, MEDIASUBTYPE_NV12))
+        *out = SPARKCAP_PIXFMT_NV12;
+    else if (IsEqualGUID(g, MEDIASUBTYPE_YUY2))
+        *out = SPARKCAP_PIXFMT_YUY2;
+    else if (IsEqualGUID(g, kMediasubtypeI420))
+        *out = SPARKCAP_PIXFMT_I420;
+    else if (IsEqualGUID(g, MEDIASUBTYPE_MJPG))
+        *out = SPARKCAP_PIXFMT_MJPG;
+    else if (IsEqualGUID(g, MEDIASUBTYPE_RGB32))
+        *out = SPARKCAP_PIXFMT_RGB32;
+    else if (IsEqualGUID(g, MEDIASUBTYPE_RGB24))
+        *out = SPARKCAP_PIXFMT_RGB24;
+    else
+        return false;
+    return true;
+}
 
 // 读 IPropertyBag 字符串属性；成功返回 true 并写出 UTF-8。
 bool readBagString(IPropertyBag* bag, const wchar_t* key, char* dst, size_t cap)
@@ -29,16 +61,288 @@ bool readBagString(IPropertyBag* bag, const wchar_t* key, char* dst, size_t cap)
     return true;
 }
 
+// ---- DShow 会话 ----
+
+class DshowSession final : public ICaptureSession {
+    // ISampleGrabberCB 的独立 COM 壳：引用计数归 graph 管理；
+    // DshowSession 析构前先 Stop + SetCallback(nullptr)，保证回调不再触达 m_owner。
+    class GrabberCB final : public ISampleGrabberCB {
+    public:
+        explicit GrabberCB(DshowSession* owner) : m_owner(owner) {}
+
+        STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override
+        {
+            if (ppv == nullptr)
+                return E_POINTER;
+            if (riid == __uuidof(IUnknown) || riid == __uuidof(ISampleGrabberCB)) {
+                *ppv = static_cast<ISampleGrabberCB*>(this);
+                AddRef();
+                return S_OK;
+            }
+            *ppv = nullptr;
+            return E_NOINTERFACE;
+        }
+        STDMETHODIMP_(ULONG) AddRef() override { return ++m_refCount; }
+        STDMETHODIMP_(ULONG) Release() override
+        {
+            const ULONG n = --m_refCount;
+            if (n == 0)
+                delete this;
+            return n;
+        }
+
+        // 只用 BufferCB（SetCallback 第二参数 1）
+        STDMETHODIMP SampleCB(double, IMediaSample*) override { return S_OK; }
+        STDMETHODIMP BufferCB(double sampleTime, BYTE* buffer, long bufferLen) override
+        {
+            return m_owner->onBuffer(sampleTime, buffer, bufferLen);
+        }
+
+    private:
+        DshowSession* m_owner;
+        std::atomic<ULONG> m_refCount{1};
+    };
+
+public:
+    explicit DshowSession(Microsoft::WRL::ComPtr<IBaseFilter> sourceFilter);
+    ~DshowSession() override;
+
+    DshowSession(const DshowSession&) = delete;
+    DshowSession& operator=(const DshowSession&) = delete;
+
+    // ICaptureSession
+    int start(int width, int height, sparkcap_pixfmt_t fmt, int fps) override;
+    int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) override;
+    int stop() override;
+
+private:
+    HRESULT onBuffer(double sampleTime, BYTE* buffer, long bufferLen);
+    int buildGraphLocked();  // 组装 capture → grabber 图并解析输出格式
+
+    Microsoft::WRL::ComPtr<IBaseFilter>         m_sourceFilter;
+    Microsoft::WRL::ComPtr<IGraphBuilder>       m_graph;
+    Microsoft::WRL::ComPtr<ICaptureGraphBuilder2> m_captureBuilder;
+    Microsoft::WRL::ComPtr<IBaseFilter>         m_grabberFilter;
+    Microsoft::WRL::ComPtr<ISampleGrabber>      m_grabber;
+    Microsoft::WRL::ComPtr<IMediaControl>       m_control;
+    Microsoft::WRL::ComPtr<GrabberCB>           m_callback;
+
+    HANDLE m_frameEvent = nullptr;  // auto-reset：新帧
+    std::mutex m_mutex;
+    std::vector<BYTE> m_frameBuffer;  // BufferCB 拷贝目标（帧有效期内稳定）
+    sparkcap_frame_t m_frame = {};
+    std::atomic<bool> m_running{false};
+    bool m_built = false;
+};
+
+DshowSession::DshowSession(Microsoft::WRL::ComPtr<IBaseFilter> sourceFilter)
+    : m_sourceFilter(std::move(sourceFilter))
+{
+    m_frameEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    m_callback = Microsoft::WRL::ComPtr<GrabberCB>(new GrabberCB(this));
+}
+
+DshowSession::~DshowSession()
+{
+    stop();  // 幂等
+    if (m_grabber != nullptr)
+        m_grabber->SetCallback(nullptr, 0);  // 摘回调，graph 线程不再进入
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_control.Reset();
+        m_grabber.Reset();
+        m_grabberFilter.Reset();
+        m_captureBuilder.Reset();
+        m_graph.Reset();  // 释放 filter 与回调引用
+        m_sourceFilter.Reset();
+    }
+    m_callback.Reset();
+    if (m_frameEvent != nullptr)
+        CloseHandle(m_frameEvent);
+}
+
+int DshowSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_running.load())
+        return SPARKCAP_ERR_UNSUPPORTED;
+
+    // 分辨率/格式/帧率偏好随 M1d 经 IAMStreamConfig::SetFormat 落位
+    (void)width;
+    (void)height;
+    (void)fmt;
+    (void)fps;
+
+    if (!m_built) {
+        const int rc = buildGraphLocked();
+        if (rc != SPARKCAP_ERR_OK)
+            return rc;
+    }
+
+    ResetEvent(m_frameEvent);
+    const HRESULT hr = m_control->Run();  // S_FALSE 表示启动过渡中，均视为成功
+    if (FAILED(hr))
+        return SPARKCAP_ERR_START_FAILED;
+    m_running.store(true);
+    return SPARKCAP_ERR_OK;
+}
+
+int DshowSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
+{
+    if (!m_running.load())
+        return SPARKCAP_ERR_STREAM_LOST;
+
+    const DWORD wait = (timeoutMs < 0) ? INFINITE : static_cast<DWORD>(timeoutMs);
+    const DWORD wr = WaitForSingleObject(m_frameEvent, wait);
+    if (wr == WAIT_TIMEOUT)
+        return SPARKCAP_ERR_TIMEOUT;
+    if (wr != WAIT_OBJECT_0)
+        return SPARKCAP_ERR_INTERNAL;
+
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_frameBuffer.empty())
+        return SPARKCAP_ERR_STREAM_LOST;
+    *outFrame = m_frame;  // data 指向内部缓冲，有效至下次 getFrame/stop（Spec §4.3）
+    return SPARKCAP_ERR_OK;
+}
+
+int DshowSession::stop()
+{
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (!m_running.load())
+            return SPARKCAP_ERR_OK;  // 幂等
+        m_running.store(false);
+    }
+
+    // 锁外调用：Stop 等待 graph 线程退出当前样本处理（在途回调返回后才完成，Spec §4.4-4）
+    if (m_control != nullptr)
+        m_control->Stop();
+
+    std::lock_guard<std::mutex> lk(m_mutex);
+    m_frame.data = nullptr;
+    m_frame.size = 0;
+    m_frame.timestamp = 0;
+    return SPARKCAP_ERR_OK;
+}
+
+HRESULT DshowSession::onBuffer(double sampleTime, BYTE* buffer, long bufferLen)
+{
+    if (buffer == nullptr || bufferLen <= 0)
+        return S_OK;
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (!m_running.load())
+        return S_OK;
+    // 压缩格式帧长可变，按需扩展
+    if (static_cast<size_t>(bufferLen) > m_frameBuffer.size())
+        m_frameBuffer.resize(static_cast<size_t>(bufferLen));
+    memcpy(m_frameBuffer.data(), buffer, static_cast<size_t>(bufferLen));
+    m_frame.data = m_frameBuffer.data();
+    m_frame.size = bufferLen;
+    m_frame.timestamp = static_cast<int64_t>(sampleTime * 1e7);  // 秒 → 100ns
+    SetEvent(m_frameEvent);
+    return S_OK;
+}
+
+int DshowSession::buildGraphLocked()
+{
+    using Microsoft::WRL::ComPtr;
+
+    if (FAILED(CoCreateInstance(CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(m_graph.GetAddressOf()))))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(CoCreateInstance(CLSID_CaptureGraphBuilder2, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(m_captureBuilder.GetAddressOf()))) ||
+        FAILED(m_captureBuilder->SetFiltergraph(m_graph.Get())))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(m_graph->AddFilter(m_sourceFilter.Get(), L"sparkcap_source")))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(CoCreateInstance(__uuidof(SampleGrabber), nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(m_grabberFilter.GetAddressOf()))))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(m_grabberFilter.As(&m_grabber)))
+        return SPARKCAP_ERR_INTERNAL;
+    m_grabber->SetOneShot(FALSE);
+    m_grabber->SetBufferSamples(FALSE);                      // 帧经回调交付，不内部缓存
+    if (FAILED(m_grabber->SetCallback(m_callback.Get(), 1)))  // 1 = BufferCB
+        return SPARKCAP_ERR_INTERNAL;
+
+    // 不锁子类型：与设备协商默认格式（native 直出，F9 保真；偏好选择随 M1d）
+    AM_MEDIA_TYPE wantMt = {};
+    wantMt.majortype = MEDIATYPE_Video;
+    if (FAILED(m_grabber->SetMediaType(&wantMt)))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(m_graph->AddFilter(m_grabberFilter.Get(), L"sparkcap_grabber")))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(m_captureBuilder->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video,
+                                              m_sourceFilter.Get(), nullptr,
+                                              m_grabberFilter.Get())))
+        return SPARKCAP_ERR_START_FAILED;
+
+    // 解析协商后的输出格式（帧描述的 width/height/pixfmt/stride 来源）
+    AM_MEDIA_TYPE conn = {};
+    if (FAILED(m_grabber->GetConnectedMediaType(&conn)) ||
+        conn.formattype != FORMAT_VideoInfo ||
+        conn.cbFormat < sizeof(VIDEOINFOHEADER))
+    {
+        if (conn.pbFormat != nullptr) {
+            CoTaskMemFree(conn.pbFormat);
+            return SPARKCAP_ERR_UNSUPPORTED;  // 非 VideoInfo 格式（VideoInfo2 等）暂不支持
+        }
+        return SPARKCAP_ERR_UNSUPPORTED;
+    }
+
+    const auto* vi = reinterpret_cast<const VIDEOINFOHEADER*>(conn.pbFormat);
+    const int w = static_cast<int>(vi->bmiHeader.biWidth);
+    const int h = static_cast<int>(vi->bmiHeader.biHeight < 0
+                                       ? -vi->bmiHeader.biHeight
+                                       : vi->bmiHeader.biHeight);
+
+    sparkcap_pixfmt_t pf;
+    if (w <= 0 || h <= 0 || !pixFmtFromSubtype(conn.subtype, &pf)) {
+        CoTaskMemFree(conn.pbFormat);
+        return SPARKCAP_ERR_UNSUPPORTED;
+    }
+
+    m_frame.width = w;
+    m_frame.height = h;
+    m_frame.pixelFormat = pf;
+    if (pf == SPARKCAP_PIXFMT_MJPG) {
+        m_frame.stride = 0;  // 压缩格式：帧长以 BufferCB 实际长度为准
+    } else {
+        const int bpp = static_cast<int>(vi->bmiHeader.biBitCount);
+        m_frame.stride = w * (bpp / 8);
+        if (m_frame.stride <= 0) {
+            CoTaskMemFree(conn.pbFormat);
+            return SPARKCAP_ERR_UNSUPPORTED;
+        }
+    }
+
+    // 预分配帧缓冲（压缩格式按首帧实际长度再扩展）
+    const DWORD imgSize = vi->bmiHeader.biSizeImage;
+    m_frameBuffer.resize((pf == SPARKCAP_PIXFMT_MJPG || imgSize == 0)
+                             ? static_cast<size_t>(m_frame.stride > 0
+                                                       ? m_frame.stride * h
+                                                       : 64 * 1024)
+                             : static_cast<size_t>(imgSize));
+
+    CoTaskMemFree(conn.pbFormat);
+
+    if (FAILED(m_graph.As(&m_control)))
+        return SPARKCAP_ERR_INTERNAL;
+    m_built = true;
+    return SPARKCAP_ERR_OK;
+}
+
 } // namespace
 
-// 会话（ISampleGrabber + CaptureGraph）随 M1c 落位。
-int DshowBackend::createSession(const sparkcap_device_info_t& /*info*/, ICaptureSession** out)
-{
-    if (out == nullptr)
-        return SPARKCAP_ERR_INVALID_ARG;
-    *out = nullptr;
-    return SPARKCAP_ERR_UNSUPPORTED;
-}
+// ---- DshowBackend ----
 
 int DshowBackend::enumerateDevices(std::vector<sparkcap_device_info_t>& out)
 {
@@ -71,6 +375,59 @@ int DshowBackend::enumerateDevices(std::vector<sparkcap_device_info_t>& out)
         moniker.Reset();
     }
     return SPARKCAP_ERR_OK;
+}
+
+int DshowBackend::createSession(const sparkcap_device_info_t& info, ICaptureSession** out)
+{
+    using Microsoft::WRL::ComPtr;
+
+    if (out == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *out = nullptr;
+
+    // 按存储的 path（符号链接 / moniker 串，大小写不敏感）重新定位设备 filter；
+    // 无 path 的软件设备按 FriendlyName 匹配。
+    ComPtr<ICreateDevEnum> devEnum;
+    if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(devEnum.GetAddressOf()))))
+        return SPARKCAP_ERR_INTERNAL;
+
+    ComPtr<IEnumMoniker> enumMoniker;
+    if (devEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
+                                       enumMoniker.GetAddressOf(), 0) != S_OK)
+        return SPARKCAP_ERR_NOT_FOUND;
+
+    ComPtr<IBaseFilter> filter;
+    ComPtr<IMoniker> moniker;
+    while (filter == nullptr &&
+           enumMoniker->Next(1, moniker.GetAddressOf(), nullptr) == S_OK)
+    {
+        ComPtr<IPropertyBag> bag;
+        if (SUCCEEDED(moniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(bag.GetAddressOf())))) {
+            char name[256] = {};
+            char path[512] = {};
+            const bool hasName = readBagString(bag.Get(), L"FriendlyName", name, sizeof(name));
+            readBagString(bag.Get(), L"DevicePath", path, sizeof(path));
+            const bool match = (info.path[0] != '\0')
+                ? (_stricmp(path, info.path) == 0)
+                : (hasName && strcmp(name, info.name) == 0);
+            if (match)
+                moniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(filter.GetAddressOf()));
+        }
+        moniker.Reset();
+    }
+
+    if (filter == nullptr)
+        return SPARKCAP_ERR_NOT_FOUND;
+
+    try {
+        *out = new DshowSession(std::move(filter));
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
 }
 
 } // namespace sparkcap

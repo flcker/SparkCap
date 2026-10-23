@@ -1,10 +1,11 @@
-// M1b Demo：打开第一台 MF 设备，取 10 帧并打印帧信息（F2/F3/F4/F6/F7 验证）。
-// 构建：cmake --build --preset release 后运行 out/x64/Release/capture.exe
+// M1b/M1c Demo：打开指定后端的第一台设备，取 10 帧并打印帧信息（F2/F3/F4/F6/F7 验证）。
+// 构建：cmake --build --preset release 后运行 out/x64/Release/capture.exe [mf|dshow]
 
 #include <sparkcap.h>
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <windows.h>
 
 static const char* pixfmtName(sparkcap_pixfmt_t f)
@@ -15,13 +16,18 @@ static const char* pixfmtName(sparkcap_pixfmt_t f)
     case SPARKCAP_PIXFMT_I420:  return "I420";
     case SPARKCAP_PIXFMT_MJPG:  return "MJPG";
     case SPARKCAP_PIXFMT_RGB32: return "RGB32";
+    case SPARKCAP_PIXFMT_RGB24: return "RGB24";
     default:                    return "?";
     }
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
     SetConsoleOutputCP(CP_UTF8);
+
+    sparkcap_backend_kind_t want = SPARKCAP_BACKEND_MF;
+    if (argc > 1 && strcmp(argv[1], "dshow") == 0)
+        want = SPARKCAP_BACKEND_DSHOW;
 
     sparkcap_backend_t* backend = NULL;
     int rc = sparkcap_create_backend(&backend);
@@ -48,11 +54,11 @@ int main(void)
     int target = -1;
     for (int i = 0; i < count; ++i) {
         printf("  [%d] %-28s backend=%d\n", devs[i].id, devs[i].name, devs[i].backend);
-        if (target < 0 && devs[i].backend == SPARKCAP_BACKEND_MF)
+        if (target < 0 && devs[i].backend == want)
             target = devs[i].id;
     }
     if (target < 0) {
-        printf("no MF device found\n");
+        printf("no %s device found\n", want == SPARKCAP_BACKEND_MF ? "MF" : "DShow");
         free(devs);
         sparkcap_destroy_backend(backend);
         return 1;

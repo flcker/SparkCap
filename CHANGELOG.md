@@ -6,6 +6,7 @@
 
 ### Added
 
+- M1c：DShow 会话——`DshowSession`（ISampleGrabber BufferCB 回调 + 帧拷贝缓冲，SampleGrabber 回调缓冲仅回调内有效故存在一次拷贝；CaptureGraphBuilder2 组图，协商格式经 GetConnectedMediaType 解析）；`src/qedit_min.h` 内嵌 ISampleGrabber 最小声明（qedit.h 已从新版 Windows SDK 移除，CLSID 已经本机注册表验证为 {C1F400A0-3F08-11D3-9F0B-006008039E37}）；设备 filter 按 path/FriendlyName 重新定位（无 DevicePath 的软件设备按名匹配）；demo `capture.c` 增加后端参数；实测 YY开播 1920×1080 RGB24 连续取帧、stop 后 STREAM_LOST
 - M1b：MF 会话——`sparkcap_open`/`start`/`get_frame`/`stop`/`close` MF 路径真实现：IMFSourceReader 异步读取、native 类型直出（F9 保真）、buffer Lock 零拷贝帧描述、分辨率/格式偏好最近匹配（帧率匹配待 M1d）；`copy_frame`/`release_frame`（magic 标记一次分配布局，仅接受拷贝产物）；句柄注册表兑现 Spec §4.5（close 后句柄返回 INVALID_HANDLE 不崩溃）；demo `examples/capture.c`（实测 e2eSoft VCam 320×240 YUY2 连续 10 帧、stop 后 get_frame 返回 STREAM_LOST）
 - M1a：双后端设备枚举——`SparkCapDeviceManager`（MF 优先 + DShow 兜底，按设备实例去重，兼容同一设备挂不同 KS 类别导致的 symbolic link 差异）、`MfBackend`（MFEnumDeviceSources）/`DshowBackend`（SystemDeviceEnum）；facade 真实现 `create_backend`/`list_devices`/`destroy_backend`（COM/MF 生命周期、C ABI 边界异常翻译）；demo `examples/list_devices.c`（实测 3 设备：虚拟摄像头 ×2 + 软件源 ×1，去重正确）
 - 工程骨架：CMake 构建（`cmake --preset default` → `--preset release|debug`，VS2022 x64、静态 CRT /MT、/W4 /WX、/utf-8）
@@ -18,6 +19,7 @@
 ### Changed
 
 - `sparkcap_frame_t` 增加 `size` 字段（帧数据字节长度）：压缩格式（MJPG）无法从 width/height/stride 推出缓冲大小，`copy_frame` 与应用读取均需要
+- 新增 `SPARKCAP_PIXFMT_RGB24`：DShow 虚拟摄像头（YY开播/OBS 类）普遍原生输出 24 位 BGR，按 F9 保真原则原样上报
 
 - 三份设计文档 v1.0 → v1.1（评审修订）：
   - 接口表补 `sparkcap_set_frame_callback`（F5 回调模式此前无 API 支撑）与 `sparkcap_version`；

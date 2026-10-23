@@ -36,6 +36,8 @@ bool pixFmtFromGuid(const GUID& g, sparkcap_pixfmt_t* out)
         *out = SPARKCAP_PIXFMT_MJPG;
     else if (IsEqualGUID(g, MFVideoFormat_ARGB32) || IsEqualGUID(g, MFVideoFormat_RGB32))
         *out = SPARKCAP_PIXFMT_RGB32;
+    else if (IsEqualGUID(g, MFVideoFormat_RGB24))
+        *out = SPARKCAP_PIXFMT_RGB24;
     else
         return false;
     return true;
