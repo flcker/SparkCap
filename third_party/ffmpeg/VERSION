@@ -1,0 +1,9 @@
+FFmpeg 版本记录（docs/SparkCap-命名规范.md §7）
+
+状态：未锁定（M3 前锁定）
+
+规则：
+- 锁定稳定分支最新补丁 tag，在此记录 tag + commit hash；
+- 由维护者以 MSVC v14.44 编译（工具集在此锁定；主工程仅要求 VS2022 ≥ 14.30，14.x 系列二进制兼容可直接链接本目录产物），CRT 选项与主工程一致（/MT）；
+- 仅保留 RTSP/RTP/TCP/UDP 协议、H.264/HEVC 解码、D3D11VA（技术选型 §7）；
+- libav* 头仅在 src/backend_ffmpeg.cpp 内部 include。

@@ -1,0 +1,27 @@
+# 构建输出
+out/
+build/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# 中间产物
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# third_party 构建产物（VERSION 与构建脚本入库）
+third_party/ffmpeg/build/
+third_party/ffmpeg/install/
+third_party/ffmpeg/lib/

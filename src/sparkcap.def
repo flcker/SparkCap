@@ -1,0 +1,17 @@
+; SparkCap 导出清单（docs/SparkCap-命名规范.md §6）
+; 最终导出面以此白名单为准；SPARKCAP_API 负责源码语义。
+; 不写 LIBRARY 语句：模块名跟随输出文件（sparkcap.dll / sparkcapd.dll）。
+
+EXPORTS
+    sparkcap_list_devices
+    sparkcap_create_backend
+    sparkcap_open
+    sparkcap_set_frame_callback
+    sparkcap_start
+    sparkcap_get_frame
+    sparkcap_copy_frame
+    sparkcap_release_frame
+    sparkcap_stop
+    sparkcap_close
+    sparkcap_destroy_backend
+    sparkcap_version
