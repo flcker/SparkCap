@@ -21,7 +21,6 @@ cmake_install.cmake
 *.pdb
 *.ilk
 
-# third_party 构建产物（VERSION 与构建脚本入库）
-third_party/ffmpeg/build/
+# third_party：源码树与临时安装不入库；成品 include/ 与 lib/ 入库（见 docs/SparkCap-FFmpeg编译指南.md §6）
+third_party/ffmpeg/src/
 third_party/ffmpeg/install/
-third_party/ffmpeg/lib/

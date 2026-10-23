@@ -6,6 +6,8 @@
 
 ### Added
 
+- `docs/SparkCap-编译环境安装指南.md`：新机器从零搭建编译环境——VS2022 安装与工具集验证、MSYS2 安装与 pacman 首次更新（含清华镜像）、构建工具安装（make/diffutils/nasm/yasm 及各自用途）、`msys2_shell.cmd -use-full-path` 就绪检查、常见安装问题
+- `docs/SparkCap-FFmpeg编译指南.md`：源码锁定（n9.0.2）、MSVC v14.44 静态裁剪编译全流程（Release /MT + Debug /MTd 双份）、configure 参数逐条说明、产物入库布局（成品 lib/include 入库，src/install 忽略）、dumpbin 验证与常见问题；环境部分引用安装指南
 - M2b（M2 收口）：拉取模式环形队列（`src/frame_queue.h` 模板，技术选型 §4 统一帧输出层）——8 槽环形缓冲：满丢最旧（保最新）、按序消费不丢帧（N2）、空时事件唤醒；MF 槽持 Lock 的 buffer 引用（移动语义转移 Unlock 义务），DShow 槽持拷贝缓冲（vector 移动保指针稳定）；getFrame 改两段式（先非阻塞取、空则等事件）；stop 唤醒等待者；实测 MF 50 帧时间戳零跳变（gaps=0，N2 ✓）
 - M2c：延迟/抖动数据（N3）——demo 回调模式 200 帧抖动统计：MF min=28.6ms / max=48.9ms / avg=40.0ms（max/avg=1.2），DShow avg=93ms / max/avg=2.8（YY开播 空闲输出不规律，属驱动行为）；N1 端到端延迟需拍屏法实测，留 M4 验收
 - M2a：回调模式（F5 落地）——`sparkcap_set_frame_callback` 真实现：采集线程直接交付（MF OnReadSample 线程 / DShow BufferCB 线程），帧仅回调期间有效（Spec §4.3-1）；`g_inFrameCallback` thread_local 守卫：回调内 stop/close/set_frame_callback 返回 `SPARKCAP_ERR_IN_CALLBACK`（Spec §4.4-5）；MF stop 以原子计数等待在途回调返回（Spec §4.4-4），DShow 经 `IMediaControl::Stop` 同步等待；用户回调异常在库边界吞掉不中断采集；实测双后端各 20 帧回调、守卫返回 11、stop→restart 正常
@@ -23,6 +25,7 @@
 
 ### Changed
 
+- 技术选型补充硬解决策依据：D3D11VA 为 API 标准（非厂商私有），一套代码经驱动覆盖 Intel（Quick Sync）/ AMD（VCN）/ NVIDIA（NVDEC）三家，不引入 QSV/NVDEC 专有路径；D3D11VA 不可用时自动回落软解（无 GPU、虚拟机、远程桌面、个别 codec profile 场景），软解兼作正确性基准
 - `sparkcap_frame_t` 增加 `size` 字段（帧数据字节长度）：压缩格式（MJPG）无法从 width/height/stride 推出缓冲大小，`copy_frame` 与应用读取均需要
 - 新增 `SPARKCAP_PIXFMT_RGB24`：DShow 虚拟摄像头（YY开播/OBS 类）普遍原生输出 24 位 BGR，按 F9 保真原则原样上报
 - 修复：DShow `getFormats` 缺 `GetNumberOfCapabilities` size 检查，驱动声明 caps 超过结构大小时 `GetStreamCaps` 写穿栈（YY开播 实测崩溃 0xC0000005）

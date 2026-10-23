@@ -91,11 +91,14 @@
 | 像素转换 | 上层决定，库内不做隐式转换 | 降低延迟与不确定性 |
 | 帧内存 | 库分配、库释放，提供 release_frame | 避免跨 DLL 堆崩溃 |
 | GPU 直通 | MF 路径 MF_SA_D3D11_AWARE | 降低拷贝与延迟 |
+| 硬解 API | D3D11VA，不选 QSV/NVDEC 专有路径 | D3D11VA 是 API 标准而非厂商私有：一套代码经驱动覆盖 Intel（Quick Sync）/ AMD（VCN）/ NVIDIA（NVDEC）全部三家；且与 MF surface 直通共享 D3D11 基础设施，GPU 帧过 C ABI 只设计一次 |
+| 硬解回落 | D3D11VA 不可用时自动回落软解 | 无 GPU、虚拟机、远程桌面会话及个别 codec profile 驱动不支持时兜底；M3 软解兼作硬解的正确性基准 |
 | 配置扩展 | JSON 增加 IP Camera 设备 | 不改代码即可接入 |
 
 ## 7. FFmpeg 集成策略
 
 - 静态裁剪，仅保留 RTSP/RTP/TCP/UDP 协议、H.264/HEVC 解码、D3D11VA；
+- 硬解经 `AV_HWDEVICE_TYPE_D3D11VA`（跨厂商，见 §6 决策），设备创建失败或 codec profile 不受驱动支持时自动回落软解；
 - 由维护者以 MSVC v14.44 自行编译（工具集锁定记录于 VERSION 文件；主工程仅要求 VS2022 ≥ 14.30，14.x 系列二进制兼容），CRT 选项与主工程一致；
 - 锁定稳定分支最新补丁 tag，记录于 third_party/ffmpeg/VERSION；
 - libav* 头仅在 backend_ffmpeg 内部 include，符号不进导出表。

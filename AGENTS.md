@@ -9,6 +9,8 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 | docs/SparkCap-技术选型方案.md | 架构决策、方案对比、里程碑 M1–M4 |
 | docs/SparkCap-Spec.md | 接口契约、线程模型、验收标准 |
 | docs/SparkCap-命名规范.md | 符号、目录、导出控制、产物命名 |
+| docs/SparkCap-编译环境安装指南.md | 新机器环境搭建（VS2022/MSYS2/工具，M3） |
+| docs/SparkCap-FFmpeg编译指南.md | FFmpeg 静态裁剪编译全流程（M3） |
 
 **规则：改对外接口、错误码或语义时，先改 Spec 再改代码，保持两者一致；显著变更记入 [CHANGELOG.md](CHANGELOG.md) 的 Unreleased 段。**
 
