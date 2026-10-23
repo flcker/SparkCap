@@ -13,9 +13,16 @@ if (MSVC AND MSVC_VERSION LESS 1930)
         "Current compiler _MSC_VER is ${MSVC_VERSION}.")
 endif()
 
-# ---- 目标 ----
+# ---- 输出目录（命名规范 §8；demo 与 DLL 同目录以便运行）----
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
+
+# ---- 库 ----
 add_library(sparkcap SHARED
     src/facade.cpp
+    src/device_manager.cpp
+    src/backend_mf.cpp
+    src/backend_dshow.cpp
 )
 
 target_include_directories(sparkcap
@@ -23,6 +30,9 @@ target_include_directories(sparkcap
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
+
+# COM/MF/DShow 系统库：ole32+oleaut32（COM）、mfplat+mf+mfuuid（MF）、strmiids（DShow）
+target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid strmiids)
 
 target_compile_features(sparkcap PRIVATE cxx_std_20)
 
@@ -37,11 +47,13 @@ set_property(TARGET sparkcap PROPERTY
 target_link_options(sparkcap PRIVATE
     "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/src/sparkcap.def")
 
-# 输出目录与 Debug 后缀（命名规范 §8）
-set_target_properties(sparkcap PROPERTIES
-    DEBUG_POSTFIX "d"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
+# Debug 后缀（命名规范 §8；输出目录已全局设置）
+set_target_properties(sparkcap PROPERTIES DEBUG_POSTFIX "d")
 
 # 警告等级；/utf-8：源码与执行字符集均为 UTF-8（源文件含中文注释）
 target_compile_options(sparkcap PRIVATE /W4 /WX /utf-8)
+
+# ---- Demo（examples/）----
+add_executable(list_devices examples/list_devices.c)
+target_link_libraries(list_devices PRIVATE sparkcap)
+target_compile_options(list_devices PRIVATE /W4 /WX /utf-8)

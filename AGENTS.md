@@ -33,7 +33,8 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 ## 目录结构
 
     include/            # 公开头（sparkcap.h、sparkcap_types.h，仅此两个）
-    src/                # 实现（facade.cpp + 各后端 + sparkcap.def）
+    src/                # 实现（facade.cpp、device_manager、backend_mf、backend_dshow、sparkcap.def 等）
+    examples/           # 可运行 demo（list_devices 等）
     third_party/ffmpeg/ # 静态库与头，不入导出（版本记录见 VERSION）
     docs/               # 三份设计文档
     out/x64/<Config>/   # 构建产物（不入库）
@@ -57,4 +58,4 @@ FFmpeg 许可合规是待确认事项（Spec §9-4）：结论出来前，禁止
 
 ## 当前状态
 
-骨架（stub 实现，接口全部返回 `SPARKCAP_ERR_UNSUPPORTED`）。里程碑：M1 双后端枚举+本地取帧 → M2 统一帧层+零拷贝 → M3 FFmpeg+RTSP → M4 硬解+重连+稳定性。
+M1a 完成：双后端设备枚举（MF 优先 + DShow 兜底、按设备实例去重）+ demo `list_devices`。会话接口（open/start/get_frame）仍为 stub，随 M1b（MF 取帧）/M1c（DShow 取帧）落位。里程碑：M1 → M2 统一帧层+零拷贝 → M3 FFmpeg+RTSP → M4 硬解+重连+稳定性。
