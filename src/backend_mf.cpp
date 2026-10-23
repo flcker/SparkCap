@@ -13,14 +13,38 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 namespace sparkcap {
 namespace {
 
 // MF_SOURCE_READER_FIRST_VIDEO_STREAM 为有符号枚举，接口参数是 DWORD，统一转换
 const DWORD kFirstVideoStream = static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM);
+
+// 按符号链接创建设备源（createSession / getFormats 共用；临时源用完须 Shutdown）
+int createSourceFromPath(const char* path, Microsoft::WRL::ComPtr<IMFMediaSource>* out)
+{
+    using Microsoft::WRL::ComPtr;
+
+    wchar_t link[512] = {};
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, link, 512);
+
+    ComPtr<IMFAttributes> attrs;
+    if (FAILED(MFCreateAttributes(attrs.GetAddressOf(), 2)) ||
+        FAILED(attrs->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+                              MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID)) ||
+        FAILED(attrs->SetString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, link)))
+        return SPARKCAP_ERR_INTERNAL;
+
+    if (FAILED(MFCreateDeviceSource(attrs.Get(), out->GetAddressOf())))
+        return SPARKCAP_ERR_DEVICE_BUSY;  // 打不开常见于被占用
+    return SPARKCAP_ERR_OK;
+}
 
 // ---- 像素格式映射（MF subtype ↔ sparkcap_pixfmt_t）----
 
@@ -103,7 +127,7 @@ private:
     HRESULT onSample(HRESULT hrStatus, DWORD streamFlags, LONGLONG timestamp, IMFSample* sample);
     HRESULT onFlush();
 
-    int selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fmt);
+    int selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps);
     void unlockFrameLocked();
     bool requestNextLocked();
 
@@ -164,7 +188,7 @@ int MfSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
                                                    m_reader.ReleaseAndGetAddressOf())))
         return SPARKCAP_ERR_START_FAILED;
 
-    const int rc = selectMediaTypeLocked(width, height, fmt);
+    const int rc = selectMediaTypeLocked(width, height, fmt, fps);
     if (rc != SPARKCAP_ERR_OK) {
         m_reader.Reset();
         return rc;
@@ -263,44 +287,73 @@ HRESULT MfSession::onFlush()
 }
 
 // 选定 native 输出类型（不转换，F9 保真）。
-// 偏好：指定 w/h/fmt 时取完全匹配，否则按面积差最接近；全零取第一个支持类型。
-int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fmt)
+// 偏好：w/h 完全匹配的候选组内取 fps 最近（fps>0 时）；无完全匹配按面积差最接近；
+// 全零偏好取第一个支持类型。
+int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps)
 {
     using Microsoft::WRL::ComPtr;
 
-    ComPtr<IMFMediaType> chosen;
-    LONG chosenAreaDelta = 0;
+    struct Cand {
+        ComPtr<IMFMediaType> type;
+        UINT32 w = 0;
+        UINT32 h = 0;
+        sparkcap_pixfmt_t pf = SPARKCAP_PIXFMT_UNKNOWN;
+        int fps = 0;
+    };
+    std::vector<Cand> cands;
+
     for (DWORD i = 0;; ++i) {
         ComPtr<IMFMediaType> type;
-        if (FAILED(m_reader->GetNativeMediaType(kFirstVideoStream, i,
-                                                type.GetAddressOf())))
+        if (FAILED(m_reader->GetNativeMediaType(kFirstVideoStream, i, type.GetAddressOf())))
             break;  // 类型枚举完
 
-        UINT32 tw = 0, th = 0;
         GUID sub = {};
-        if (FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &tw, &th)) ||
-            FAILED(type->GetGUID(MF_MT_SUBTYPE, &sub)))
+        UINT32 num = 0;
+        UINT32 den = 0;
+        if (FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &num, &den)))
             continue;
-        sparkcap_pixfmt_t pf;
-        if (!pixFmtFromGuid(sub, &pf))
+        Cand c;
+        c.w = num;
+        c.h = den;
+        if (FAILED(type->GetGUID(MF_MT_SUBTYPE, &sub)) || !pixFmtFromGuid(sub, &c.pf))
             continue;  // 库不认识的 subtype 跳过
+        if (SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &num, &den)) && den > 0)
+            c.fps = static_cast<int>((num + den / 2) / den);  // 四舍五入
+        c.type = std::move(type);
+        cands.push_back(std::move(c));
+    }
 
-        if (fmt != SPARKCAP_PIXFMT_UNKNOWN && pf != fmt)
-            continue;
+    const Cand* chosen = nullptr;
 
-        if (width > 0 && height > 0 && tw == static_cast<UINT32>(width) &&
-            th == static_cast<UINT32>(height))
-        {
-            chosen = type;  // 分辨率完全匹配，直接采用
-            break;
+    // 第一遍：w/h 完全匹配组内 fps 最近
+    if (width > 0 && height > 0) {
+        int bestFpsDelta = INT_MAX;
+        for (const auto& c : cands) {
+            if (fmt != SPARKCAP_PIXFMT_UNKNOWN && c.pf != fmt)
+                continue;
+            if (c.w != static_cast<UINT32>(width) || c.h != static_cast<UINT32>(height))
+                continue;
+            const int d = (fps > 0) ? std::abs(c.fps - fps) : 0;
+            if (chosen == nullptr || d < bestFpsDelta) {
+                chosen = &c;
+                bestFpsDelta = d;
+            }
         }
+    }
 
-        const LONG dw = static_cast<LONG>(tw) - width;   // 带符号差值
-        const LONG dh = static_cast<LONG>(th) - height;
-        const LONG areaDelta = (dw >= 0 ? dw : -dw) + (dh >= 0 ? dh : -dh);
-        if (chosen == nullptr || areaDelta < chosenAreaDelta) {
-            chosen = type;
-            chosenAreaDelta = areaDelta;
+    // 第二遍：无完全匹配 → 面积差最接近
+    if (chosen == nullptr) {
+        LONG bestArea = LONG_MAX;
+        for (const auto& c : cands) {
+            if (fmt != SPARKCAP_PIXFMT_UNKNOWN && c.pf != fmt)
+                continue;
+            const LONG dw = static_cast<LONG>(c.w) - width;
+            const LONG dh = static_cast<LONG>(c.h) - height;
+            const LONG area = (dw >= 0 ? dw : -dw) + (dh >= 0 ? dh : -dh);
+            if (area < bestArea) {
+                bestArea = area;
+                chosen = &c;
+            }
         }
     }
 
@@ -308,24 +361,21 @@ int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fm
         return SPARKCAP_ERR_UNSUPPORTED;
 
     if (FAILED(m_reader->SetCurrentMediaType(kFirstVideoStream, nullptr,
-                                             chosen.Get())))
+                                             chosen->type.Get())))
         return SPARKCAP_ERR_START_FAILED;
 
-    UINT32 w = 0, h = 0;
-    GUID sub = {};
-    MFGetAttributeSize(chosen.Get(), MF_MT_FRAME_SIZE, &w, &h);
-    chosen->GetGUID(MF_MT_SUBTYPE, &sub);
-
-    m_frame.width = static_cast<int>(w);
-    m_frame.height = static_cast<int>(h);
-    pixFmtFromGuid(sub, &m_frame.pixelFormat);
+    m_frame.width = static_cast<int>(chosen->w);
+    m_frame.height = static_cast<int>(chosen->h);
+    m_frame.pixelFormat = chosen->pf;
 
     // stride：优先 MF_MT_DEFAULT_STRIDE，缺失时按 FOURCC 计算；压缩格式（MJPG）无意义置 0
+    GUID sub = {};
     UINT32 stride = 0;
-    if (FAILED(chosen->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride))) {
+    chosen->type->GetGUID(MF_MT_SUBTYPE, &sub);
+    if (FAILED(chosen->type->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride))) {
         LONG calc = 0;
         if (m_frame.pixelFormat != SPARKCAP_PIXFMT_MJPG &&
-            SUCCEEDED(MFGetStrideForBitmapInfoHeader(sub.Data1, w, &calc)) && calc > 0)
+            SUCCEEDED(MFGetStrideForBitmapInfoHeader(sub.Data1, chosen->w, &calc)) && calc > 0)
             stride = static_cast<UINT32>(calc);
         else
             stride = 0;
@@ -407,20 +457,10 @@ int MfBackend::createSession(const sparkcap_device_info_t& info, ICaptureSession
         return SPARKCAP_ERR_INVALID_ARG;
     *out = nullptr;
 
-    // 按符号链接创建设备源
-    wchar_t link[512] = {};
-    MultiByteToWideChar(CP_UTF8, 0, info.path, -1, link, 512);
-
-    ComPtr<IMFAttributes> attrs;
-    if (FAILED(MFCreateAttributes(attrs.GetAddressOf(), 2)) ||
-        FAILED(attrs->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-                              MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID)) ||
-        FAILED(attrs->SetString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, link)))
-        return SPARKCAP_ERR_INTERNAL;
-
     ComPtr<IMFMediaSource> source;
-    if (FAILED(MFCreateDeviceSource(attrs.Get(), source.GetAddressOf())))
-        return SPARKCAP_ERR_DEVICE_BUSY;  // 打不开常见于被占用（细分 M1b+ 验证）
+    const int rc = createSourceFromPath(info.path, &source);
+    if (rc != SPARKCAP_ERR_OK)
+        return rc;
 
     try {
         *out = new MfSession(std::move(source));
@@ -430,6 +470,61 @@ int MfBackend::createSession(const sparkcap_device_info_t& info, ICaptureSession
     } catch (...) {
         return SPARKCAP_ERR_INTERNAL;
     }
+}
+
+int MfBackend::getFormats(const sparkcap_device_info_t& info,
+                          std::vector<sparkcap_device_format_t>& out)
+{
+    using Microsoft::WRL::ComPtr;
+
+    if (info.path[0] == '\0')
+        return SPARKCAP_ERR_INVALID_ARG;
+
+    ComPtr<IMFMediaSource> source;
+    int rc = createSourceFromPath(info.path, &source);
+    if (rc != SPARKCAP_ERR_OK)
+        return rc;
+
+    // 临时同步 reader 枚举 native 类型（查询完即销毁，不干扰真实会话）
+    ComPtr<IMFSourceReader> reader;
+    if (FAILED(MFCreateSourceReaderFromMediaSource(source.Get(), nullptr,
+                                                   reader.GetAddressOf()))) {
+        source->Shutdown();
+        return SPARKCAP_ERR_INTERNAL;
+    }
+
+    for (DWORD i = 0;; ++i) {
+        ComPtr<IMFMediaType> type;
+        if (FAILED(reader->GetNativeMediaType(kFirstVideoStream, i, type.GetAddressOf())))
+            break;  // 类型枚举完
+
+        GUID sub = {};
+        UINT32 w = 0;
+        UINT32 h = 0;
+        UINT32 num = 0;
+        UINT32 den = 0;
+        if (FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &w, &h)) ||
+            FAILED(type->GetGUID(MF_MT_SUBTYPE, &sub)))
+            continue;
+        sparkcap_pixfmt_t pf;
+        if (!pixFmtFromGuid(sub, &pf))
+            continue;
+
+        int fps = 0;
+        if (SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &num, &den)) && den > 0)
+            fps = static_cast<int>((num + den / 2) / den);  // 四舍五入
+
+        sparkcap_device_format_t f = {};
+        f.width = static_cast<int>(w);
+        f.height = static_cast<int>(h);
+        f.pixelFormat = pf;
+        f.fps = fps;
+        out.push_back(f);
+    }
+
+    reader.Reset();
+    source->Shutdown();
+    return SPARKCAP_ERR_OK;
 }
 
 } // namespace sparkcap

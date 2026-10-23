@@ -58,4 +58,4 @@ FFmpeg 许可合规是待确认事项（Spec §9-4）：结论出来前，禁止
 
 ## 当前状态
 
-M1a/M1b/M1c 完成：双后端设备枚举 + MF/DShow 双会话（open/start/get_frame/stop/close，native 保真输出，实测 MF 虚拟摄像头 YUY2 与 DShow 虚拟摄像头 RGB24）。待办：M1d 帧率偏好与能力查询；回调模式待 M2（统一帧层）。里程碑：M1 → M2 统一帧层+零拷贝 → M3 FFmpeg+RTSP → M4 硬解+重连+稳定性。
+**M1 完成**：双后端枚举 + MF/DShow 会话 + 能力查询与格式偏好（实测虚拟摄像头 RGB24 连续取帧、偏好精确生效、stop 语义正确）。下一里程碑 M2：统一帧层（环形队列）+ 回调模式（`sparkcap_set_frame_callback`）+ 零拷贝路径。路线：M2 → M3 FFmpeg+RTSP → M4 硬解+重连+稳定性。

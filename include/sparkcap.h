@@ -22,6 +22,13 @@ SPARKCAP_API int sparkcap_list_devices(sparkcap_backend_t* backend,
 /* 创建后端实例 */
 SPARKCAP_API int sparkcap_create_backend(sparkcap_backend_t** out_backend);
 
+/* 查询设备能力（F11）。两段式：formats 为 NULL 时 *in_out_count 返回总数；
+   否则写入至多 *in_out_count 项并更新为实际总数。open 前后均可调用。 */
+SPARKCAP_API int sparkcap_get_formats(sparkcap_backend_t* backend,
+                                      int device_id,
+                                      sparkcap_device_format_t* formats,
+                                      int* in_out_count);
+
 /* 打开设备（F2） */
 SPARKCAP_API int sparkcap_open(sparkcap_backend_t* backend,
                                int device_id,

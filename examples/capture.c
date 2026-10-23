@@ -28,6 +28,10 @@ int main(int argc, char** argv)
     sparkcap_backend_kind_t want = SPARKCAP_BACKEND_MF;
     if (argc > 1 && strcmp(argv[1], "dshow") == 0)
         want = SPARKCAP_BACKEND_DSHOW;
+    int wantW = 0;
+    int wantH = 0;
+    if (argc > 2)
+        sscanf_s(argv[2], "%dx%d", &wantW, &wantH);  // 偏好示例："640x480"
 
     sparkcap_backend_t* backend = NULL;
     int rc = sparkcap_create_backend(&backend);
@@ -74,7 +78,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    rc = sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0);  /* 自动选类型 */
+    rc = sparkcap_start(dev, wantW, wantH, SPARKCAP_PIXFMT_UNKNOWN, 0);
     if (rc != SPARKCAP_ERR_OK) {
         printf("sparkcap_start failed: %d\n", rc);
         sparkcap_close(dev);

@@ -13,6 +13,8 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <vector>
@@ -58,6 +60,79 @@ bool readBagString(IPropertyBag* bag, const wchar_t* key, char* dst, size_t cap)
     }
     toUtf8(var.bstrVal, dst, cap);
     VariantClear(&var);
+    return true;
+}
+
+// 释放 GetStreamCaps 返回的 AM_MEDIA_TYPE（等价旧 qedit 的 DeleteMediaType）
+void freeMediaType(AM_MEDIA_TYPE* pmt)
+{
+    if (pmt == nullptr)
+        return;
+    if (pmt->cbFormat != 0)
+        CoTaskMemFree(pmt->pbFormat);
+    if (pmt->pUnk != nullptr)
+        pmt->pUnk->Release();
+    CoTaskMemFree(pmt);
+}
+
+// 按 info 重新枚举定位设备 filter（path 大小写不敏感；无 path 按 FriendlyName 匹配）。
+// createSession 与 getFormats 共用。
+int findSourceFilter(const sparkcap_device_info_t& info,
+                     Microsoft::WRL::ComPtr<IBaseFilter>* out)
+{
+    using Microsoft::WRL::ComPtr;
+
+    ComPtr<ICreateDevEnum> devEnum;
+    if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(devEnum.GetAddressOf()))))
+        return SPARKCAP_ERR_INTERNAL;
+
+    ComPtr<IEnumMoniker> enumMoniker;
+    if (devEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
+                                       enumMoniker.GetAddressOf(), 0) != S_OK)
+        return SPARKCAP_ERR_NOT_FOUND;
+
+    ComPtr<IMoniker> moniker;
+    while (out->Get() == nullptr &&
+           enumMoniker->Next(1, moniker.GetAddressOf(), nullptr) == S_OK)
+    {
+        ComPtr<IPropertyBag> bag;
+        if (SUCCEEDED(moniker->BindToStorage(nullptr, nullptr,
+                                             IID_PPV_ARGS(bag.GetAddressOf())))) {
+            char name[256] = {};
+            char path[512] = {};
+            const bool hasName = readBagString(bag.Get(), L"FriendlyName", name, sizeof(name));
+            readBagString(bag.Get(), L"DevicePath", path, sizeof(path));
+            const bool match = (info.path[0] != '\0')
+                ? (_stricmp(path, info.path) == 0)
+                : (hasName && strcmp(name, info.name) == 0);
+            if (match)
+                moniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(out->GetAddressOf()));
+        }
+        moniker.Reset();
+    }
+
+    return (out->Get() != nullptr) ? SPARKCAP_ERR_OK : SPARKCAP_ERR_NOT_FOUND;
+}
+
+// 解析 VideoInfo 媒体类型为能力条目；失败返回 false
+bool formatFromVideoInfo(const AM_MEDIA_TYPE* pmt, sparkcap_device_format_t* out)
+{
+    if (pmt->formattype != FORMAT_VideoInfo || pmt->cbFormat < sizeof(VIDEOINFOHEADER))
+        return false;
+    const auto* vi = reinterpret_cast<const VIDEOINFOHEADER*>(pmt->pbFormat);
+    const int w = static_cast<int>(vi->bmiHeader.biWidth);
+    const int h = static_cast<int>(vi->bmiHeader.biHeight < 0 ? -vi->bmiHeader.biHeight
+                                                              : vi->bmiHeader.biHeight);
+    sparkcap_pixfmt_t pf;
+    if (w <= 0 || h <= 0 || !pixFmtFromSubtype(pmt->subtype, &pf))
+        return false;
+    out->width = w;
+    out->height = h;
+    out->pixelFormat = pf;
+    out->fps = (vi->AvgTimePerFrame > 0)
+        ? static_cast<int>(1e7 / vi->AvgTimePerFrame + 0.5)  // 100ns → fps 四舍五入
+        : 0;
     return true;
 }
 
@@ -118,6 +193,7 @@ public:
 private:
     HRESULT onBuffer(double sampleTime, BYTE* buffer, long bufferLen);
     int buildGraphLocked();  // 组装 capture → grabber 图并解析输出格式
+    void applyFormatPreferenceLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps);
 
     Microsoft::WRL::ComPtr<IBaseFilter>         m_sourceFilter;
     Microsoft::WRL::ComPtr<IGraphBuilder>       m_graph;
@@ -167,11 +243,8 @@ int DshowSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
     if (m_running.load())
         return SPARKCAP_ERR_UNSUPPORTED;
 
-    // 分辨率/格式/帧率偏好随 M1d 经 IAMStreamConfig::SetFormat 落位
-    (void)width;
-    (void)height;
-    (void)fmt;
-    (void)fps;
+    // 偏好（M1d）：组图前经 IAMStreamConfig::SetFormat 选定；失败静默回落默认协商
+    applyFormatPreferenceLocked(width, height, fmt, fps);
 
     if (!m_built) {
         const int rc = buildGraphLocked();
@@ -242,6 +315,57 @@ HRESULT DshowSession::onBuffer(double sampleTime, BYTE* buffer, long bufferLen)
     m_frame.timestamp = static_cast<int64_t>(sampleTime * 1e7);  // 秒 → 100ns
     SetEvent(m_frameEvent);
     return S_OK;
+}
+
+// 偏好选择：经 IAMStreamConfig::GetStreamCaps 枚举，w/h/fmt 全匹配的候选中取 fps 最近，
+// SetFormat 设定。无匹配或接口缺失时不干预（回落设备默认协商）。
+void DshowSession::applyFormatPreferenceLocked(int width, int height, sparkcap_pixfmt_t fmt,
+                                               int fps)
+{
+    if (width <= 0 && height <= 0 && fmt == SPARKCAP_PIXFMT_UNKNOWN && fps <= 0)
+        return;  // 无偏好
+
+    Microsoft::WRL::ComPtr<IAMStreamConfig> cfg;
+    if (FAILED(m_sourceFilter.As(&cfg)))
+        return;
+
+    int count = 0;
+    int size = 0;
+    if (FAILED(cfg->GetNumberOfCapabilities(&count, &size)) ||
+        size > static_cast<int>(sizeof(VIDEO_STREAM_CONFIG_CAPS)))
+        return;
+
+    AM_MEDIA_TYPE* best = nullptr;
+    int bestFpsDelta = 0;
+    for (int i = 0; i < count; ++i) {
+        AM_MEDIA_TYPE* pmt = nullptr;
+        VIDEO_STREAM_CONFIG_CAPS caps;
+        if (FAILED(cfg->GetStreamCaps(i, &pmt, reinterpret_cast<BYTE*>(&caps))) || pmt == nullptr)
+            continue;
+
+        sparkcap_device_format_t f = {};
+        bool take = false;
+        if (formatFromVideoInfo(pmt, &f)) {
+            if ((width <= 0 || f.width == width) && (height <= 0 || f.height == height) &&
+                (fmt == SPARKCAP_PIXFMT_UNKNOWN || f.pixelFormat == fmt))
+            {
+                const int d = (fps > 0) ? std::abs(f.fps - fps) : 0;
+                if (best == nullptr || d < bestFpsDelta) {
+                    freeMediaType(best);
+                    best = pmt;
+                    bestFpsDelta = d;
+                    take = true;
+                }
+            }
+        }
+        if (!take)
+            freeMediaType(pmt);
+    }
+
+    if (best != nullptr) {
+        cfg->SetFormat(best);  // 失败回落默认，不视为错误
+        freeMediaType(best);
+    }
 }
 
 int DshowSession::buildGraphLocked()
@@ -317,11 +441,17 @@ int DshowSession::buildGraphLocked()
         m_frame.stride = 0;  // 压缩格式：帧长以 BufferCB 实际长度为准
     } else {
         const int bpp = static_cast<int>(vi->bmiHeader.biBitCount);
-        m_frame.stride = w * (bpp / 8);
-        if (m_frame.stride <= 0) {
+        int stride = w * (bpp / 8);
+        if (stride <= 0) {
             CoTaskMemFree(conn.pbFormat);
             return SPARKCAP_ERR_UNSUPPORTED;
         }
+        // 行序符号与 MF 统一：负 stride = bottom-up（data 指向最底行）。
+        // DShow RGB 格式 biHeight > 0 即 bottom-up；YUV 恒 top-down。
+        if ((pf == SPARKCAP_PIXFMT_RGB32 || pf == SPARKCAP_PIXFMT_RGB24) &&
+            vi->bmiHeader.biHeight > 0)
+            stride = -stride;
+        m_frame.stride = stride;
     }
 
     // 预分配帧缓冲（压缩格式按首帧实际长度再扩展）
@@ -385,40 +515,10 @@ int DshowBackend::createSession(const sparkcap_device_info_t& info, ICaptureSess
         return SPARKCAP_ERR_INVALID_ARG;
     *out = nullptr;
 
-    // 按存储的 path（符号链接 / moniker 串，大小写不敏感）重新定位设备 filter；
-    // 无 path 的软件设备按 FriendlyName 匹配。
-    ComPtr<ICreateDevEnum> devEnum;
-    if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(devEnum.GetAddressOf()))))
-        return SPARKCAP_ERR_INTERNAL;
-
-    ComPtr<IEnumMoniker> enumMoniker;
-    if (devEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
-                                       enumMoniker.GetAddressOf(), 0) != S_OK)
-        return SPARKCAP_ERR_NOT_FOUND;
-
     ComPtr<IBaseFilter> filter;
-    ComPtr<IMoniker> moniker;
-    while (filter == nullptr &&
-           enumMoniker->Next(1, moniker.GetAddressOf(), nullptr) == S_OK)
-    {
-        ComPtr<IPropertyBag> bag;
-        if (SUCCEEDED(moniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(bag.GetAddressOf())))) {
-            char name[256] = {};
-            char path[512] = {};
-            const bool hasName = readBagString(bag.Get(), L"FriendlyName", name, sizeof(name));
-            readBagString(bag.Get(), L"DevicePath", path, sizeof(path));
-            const bool match = (info.path[0] != '\0')
-                ? (_stricmp(path, info.path) == 0)
-                : (hasName && strcmp(name, info.name) == 0);
-            if (match)
-                moniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(filter.GetAddressOf()));
-        }
-        moniker.Reset();
-    }
-
-    if (filter == nullptr)
-        return SPARKCAP_ERR_NOT_FOUND;
+    const int rc = findSourceFilter(info, &filter);
+    if (rc != SPARKCAP_ERR_OK)
+        return rc;
 
     try {
         *out = new DshowSession(std::move(filter));
@@ -428,6 +528,41 @@ int DshowBackend::createSession(const sparkcap_device_info_t& info, ICaptureSess
     } catch (...) {
         return SPARKCAP_ERR_INTERNAL;
     }
+}
+
+int DshowBackend::getFormats(const sparkcap_device_info_t& info,
+                             std::vector<sparkcap_device_format_t>& out)
+{
+    using Microsoft::WRL::ComPtr;
+
+    ComPtr<IBaseFilter> filter;
+    int rc = findSourceFilter(info, &filter);
+    if (rc != SPARKCAP_ERR_OK)
+        return rc;
+
+    ComPtr<IAMStreamConfig> cfg;
+    if (FAILED(filter.As(&cfg)))
+        return SPARKCAP_ERR_UNSUPPORTED;  // 设备无流配置接口（固定格式）
+
+    int count = 0;
+    int size = 0;
+    if (FAILED(cfg->GetNumberOfCapabilities(&count, &size)) || count <= 0)
+        return SPARKCAP_ERR_OK;
+    // 驱动声明的 caps 大小超过结构时拒绝枚举：GetStreamCaps 会写爆调用方缓冲
+    if (size > static_cast<int>(sizeof(VIDEO_STREAM_CONFIG_CAPS)))
+        return SPARKCAP_ERR_UNSUPPORTED;
+
+    for (int i = 0; i < count; ++i) {
+        AM_MEDIA_TYPE* pmt = nullptr;
+        VIDEO_STREAM_CONFIG_CAPS caps;
+        if (FAILED(cfg->GetStreamCaps(i, &pmt, reinterpret_cast<BYTE*>(&caps))) || pmt == nullptr)
+            continue;
+        sparkcap_device_format_t f = {};
+        if (formatFromVideoInfo(pmt, &f))
+            out.push_back(f);
+        freeMediaType(pmt);
+    }
+    return SPARKCAP_ERR_OK;
 }
 
 } // namespace sparkcap

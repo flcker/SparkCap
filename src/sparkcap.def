@@ -4,6 +4,7 @@
 
 EXPORTS
     sparkcap_list_devices
+    sparkcap_get_formats
     sparkcap_create_backend
     sparkcap_open
     sparkcap_set_frame_callback

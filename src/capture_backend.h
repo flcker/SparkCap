@@ -20,6 +20,10 @@ public:
 
     // 按设备信息创建采集会话（open 的后端侧实现）。
     virtual int createSession(const sparkcap_device_info_t& info, class ICaptureSession** out) = 0;
+
+    // 追加本后端该设备支持的能力（F11）到 out（不清理已有内容）。
+    virtual int getFormats(const sparkcap_device_info_t& info,
+                           std::vector<sparkcap_device_format_t>& out) = 0;
 };
 
 // 采集会话：一台已打开设备的采集控制（Spec §4.5 序列中 open 之后的部分）。

@@ -111,4 +111,39 @@ int SparkCapDeviceManager::createSession(const sparkcap_device_info_t& info, ICa
     }
 }
 
+int SparkCapDeviceManager::getFormats(int deviceId, sparkcap_device_format_t* formats,
+                                      int* inOutCount)
+{
+    if (inOutCount == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+
+    const sparkcap_device_info_t* info = find(deviceId);
+    if (info == nullptr) {
+        *inOutCount = 0;
+        return SPARKCAP_ERR_NOT_FOUND;  // 含未 list 过的情形（table 为空）
+    }
+
+    std::vector<sparkcap_device_format_t> fmts;
+    const int rc = (info->backend == SPARKCAP_BACKEND_MF)
+        ? m_mfBackend.getFormats(*info, fmts)
+        : (info->backend == SPARKCAP_BACKEND_DSHOW)
+            ? m_dshowBackend.getFormats(*info, fmts)
+            : SPARKCAP_ERR_UNSUPPORTED;
+    if (rc != SPARKCAP_ERR_OK) {
+        *inOutCount = 0;
+        return rc;
+    }
+
+    const int total = static_cast<int>(fmts.size());
+    if (formats == nullptr) {
+        *inOutCount = total;
+        return SPARKCAP_ERR_OK;
+    }
+    const int fit = (*inOutCount < total) ? *inOutCount : total;
+    for (int i = 0; i < fit; ++i)
+        formats[i] = fmts[i];
+    *inOutCount = total;
+    return SPARKCAP_ERR_OK;
+}
+
 } // namespace sparkcap

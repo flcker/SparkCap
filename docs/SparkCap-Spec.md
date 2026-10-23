@@ -24,7 +24,7 @@
 
 | 编号 | 功能 | 描述 | 验收 |
 |---|---|---|---|
-| F1 | 设备枚举 | 返回设备列表，含 backend、path、名称、能力 | 同时列出 USB、虚拟摄像头、IP Camera |
+| F1 | 设备枚举 | 返回设备列表，含 backend、path、名称；能力经 F11 按需查询 | 同时列出 USB、虚拟摄像头、IP Camera |
 | F2 | 打开设备 | 按 deviceId 打开，返回句柄或错误码 | 已知设备打开成功 |
 | F3 | 启动采集 | 指定分辨率/格式/帧率偏好 | 成功进入取帧状态 |
 | F4 | 取帧（拉取） | 主动获取一帧，超时返回 | 超时错误码可控 |
@@ -34,6 +34,7 @@
 | F8 | 手动添加 IP Camera | 从 JSON 增删设备 | 重启后生效 |
 | F9 | 原始格式保真 | 不隐式转换 | 上报格式与源一致 |
 | F10 | 断流重连 | RTSP 断开自动重连 | 重连成功并恢复取帧 |
+| F11 | 能力查询 | 按 deviceId 查询设备支持的分辨率/格式/帧率组合 | 与设备实际能力一致 |
 
 ## 4. 接口契约
 
@@ -42,6 +43,7 @@
 | 函数 | 说明 |
 |---|---|
 | sparkcap_list_devices | 枚举设备 |
+| sparkcap_get_formats | 查询设备能力（分辨率/格式/帧率，两段式） |
 | sparkcap_create_backend | 创建后端实例 |
 | sparkcap_open | 打开设备 |
 | sparkcap_set_frame_callback | 注册帧回调（回调模式入口，须在 start 前） |
@@ -93,6 +95,7 @@
 
     sparkcap_create_backend
       → sparkcap_list_devices
+      → sparkcap_get_formats（可选，open 前后均可）
       → sparkcap_open
       → sparkcap_set_frame_callback（可选，须在 start 前）
       → sparkcap_start

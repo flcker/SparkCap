@@ -28,6 +28,10 @@ public:
     // 按设备来源创建采集会话（open 的后端分发；M1b：MF，DShow 待 M1c）。
     int createSession(const sparkcap_device_info_t& info, ICaptureSession** out);
 
+    // 能力查询（F11，两段式，语义同 enumerate）。
+    // 依赖 find：调用前须至少 list_devices 过一次（Spec §4.5 调用顺序）。
+    int getFormats(int deviceId, sparkcap_device_format_t* formats, int* inOutCount);
+
 private:
     std::vector<sparkcap_device_info_t> m_deviceTable;
     MfBackend    m_mfBackend;

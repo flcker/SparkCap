@@ -77,8 +77,8 @@
         int          width;
         int          height;
         PixelFormat  pixelFormat;   // 输出侧格式：NV12/YUY2/I420/MJPG/RGB24；RGB32 仅当设备原生输出
-        int          stride;
-        int          size;          // 帧数据字节长度：压缩格式必需；2D 格式 = stride × height
+        int          stride;        // 符号表示行序：正 top-down，负 bottom-up（MF/DShow 统一语义）
+        int          size;          // 帧数据字节长度：压缩格式必需；2D 格式 = |stride| × height
         int64_t      timestamp;
     };
 

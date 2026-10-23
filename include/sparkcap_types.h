@@ -58,7 +58,15 @@ typedef enum sparkcap_err_t {
     SPARKCAP_ERR_INTERNAL       = 12,
 } sparkcap_err_t;
 
-/* 设备信息（F1；能力列表待 M1 细化） */
+/* 设备能力条目（F11）：一种分辨率/格式/帧率组合；fps 为四舍五入整数值 */
+typedef struct sparkcap_device_format_t {
+    int               width;
+    int               height;
+    sparkcap_pixfmt_t pixelFormat;
+    int               fps;
+} sparkcap_device_format_t;
+
+/* 设备信息（F1；能力经 sparkcap_get_formats 按需查询） */
 typedef struct sparkcap_device_info_t {
     int                      id;        /* deviceId，供 sparkcap_open 使用 */
     char                     name[256];
@@ -66,14 +74,16 @@ typedef struct sparkcap_device_info_t {
     sparkcap_backend_kind_t  backend;
 } sparkcap_device_info_t;
 
-/* 帧（技术选型 §5；内存由库分配、库释放，应用不得 free） */
+/* 帧（技术选型 §5；内存由库分配、库释放，应用不得 free）。
+ * stride 符号表示行序：正 = top-down，负 = bottom-up（data 指向最底行）；
+ * RGB 系格式通常为 bottom-up。压缩格式（MJPG）stride 恒 0。 */
 typedef struct sparkcap_frame_t {
     void*             data;
     int               width;
     int               height;
     sparkcap_pixfmt_t pixelFormat;
     int               stride;
-    int               size;        /* 帧数据字节长度：压缩格式必需；2D 格式 = stride × height */
+    int               size;        /* 帧数据字节长度：压缩格式必需；2D 格式 = |stride| × height */
     int64_t           timestamp;
 } sparkcap_frame_t;
 

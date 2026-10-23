@@ -7,11 +7,13 @@
 namespace sparkcap {
 
 // DShow 后端（技术选型 §4：ISampleGrabber + CaptureGraph 路线）。
-// M1a：设备枚举（SystemDeviceEnum / CLSID_VideoInputDeviceCategory）；会话随 M1c 落位。
+// M1a：设备枚举；M1c：会话；M1d：能力查询与帧率偏好（IAMStreamConfig）。
 class DshowBackend : public ICaptureBackend {
 public:
     int enumerateDevices(std::vector<sparkcap_device_info_t>& out) override;
     int createSession(const sparkcap_device_info_t& info, ICaptureSession** out) override;
+    int getFormats(const sparkcap_device_info_t& info,
+                   std::vector<sparkcap_device_format_t>& out) override;
 };
 
 } // namespace sparkcap

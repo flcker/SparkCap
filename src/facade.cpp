@@ -140,6 +140,22 @@ int sparkcap_list_devices(sparkcap_backend_t* backend,
     }
 }
 
+// ---- 能力查询（F11，M1d）----
+
+int sparkcap_get_formats(sparkcap_backend_t* backend, int deviceId,
+                         sparkcap_device_format_t* formats, int* inOutCount)
+{
+    if (backend == nullptr || backend->manager == nullptr || inOutCount == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    try {
+        return backend->manager->getFormats(deviceId, formats, inOutCount);
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
 // ---- 会话（F2/F3/F4/F6/F7，M1b：MF 路径）----
 
 int sparkcap_open(sparkcap_backend_t* backend, int deviceId, sparkcap_device_t** outDevice)
