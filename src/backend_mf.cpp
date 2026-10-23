@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -111,7 +112,7 @@ class MfSession final : public ICaptureSession {
     };
 
 public:
-    explicit MfSession(Microsoft::WRL::ComPtr<IMFMediaSource> source);
+    MfSession(const char* path, Microsoft::WRL::ComPtr<IMFMediaSource> source);
     ~MfSession() override;
 
     MfSession(const MfSession&) = delete;
@@ -119,6 +120,7 @@ public:
 
     // ICaptureSession
     int start(int width, int height, sparkcap_pixfmt_t fmt, int fps) override;
+    int setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata) override;
     int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) override;
     int stop() override;
 
@@ -129,11 +131,13 @@ private:
 
     int selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps);
     void unlockFrameLocked();
+    void invokeCallbackLocked();
     bool requestNextLocked();
 
     Microsoft::WRL::ComPtr<IMFMediaSource>   m_source;
     Microsoft::WRL::ComPtr<IMFSourceReader>  m_reader;
     Microsoft::WRL::ComPtr<ReaderCallback>   m_callback;
+    std::string m_path;  // 设备符号链接：stop 释放 source 后供 start 重建（Spec §4.5-2 重启）
 
     HANDLE m_frameEvent = nullptr;  // auto-reset：新帧/流错误
     HANDLE m_flushEvent = nullptr;  // Flush 完成
@@ -143,11 +147,17 @@ private:
     Microsoft::WRL::ComPtr<IMFMediaBuffer> m_lockedBuffer;  // 帧有效期内保持 Lock
     BYTE* m_lockedData = nullptr;
     std::atomic<bool> m_running{false};
+    std::atomic<int> m_activeCallbacks{0};      // 在途回调计数（stop 等待，Spec §4.4-4）
     bool m_streamFailed = false;
+
+    sparkcap_device_t* m_callbackDevice = nullptr;  // 弱引用（生命周期 ⊂ device）
+    sparkcap_frame_cb  m_frameCallback = nullptr;
+    void*              m_callbackUserdata = nullptr;
 };
 
-MfSession::MfSession(Microsoft::WRL::ComPtr<IMFMediaSource> source)
+MfSession::MfSession(const char* path, Microsoft::WRL::ComPtr<IMFMediaSource> source)
     : m_source(std::move(source))
+    , m_path(path)
 {
     m_frameEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);  // auto-reset
     m_flushEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -177,6 +187,13 @@ int MfSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
     if (m_running.load())
         return SPARKCAP_ERR_UNSUPPORTED;  // 已启动
 
+    // stop 后重启：source 已 Shutdown，按符号链接重建（Spec §4.5-2 start/stop 多次交替）
+    if (m_source == nullptr) {
+        const int srcRc = createSourceFromPath(m_path.c_str(), &m_source);
+        if (srcRc != SPARKCAP_ERR_OK)
+            return srcRc;
+    }
+
     // 异步 SourceReader：回调经 attributes 注入
     Microsoft::WRL::ComPtr<IMFAttributes> attrs;
     if (FAILED(MFCreateAttributes(attrs.GetAddressOf(), 1)) ||
@@ -202,6 +219,17 @@ int MfSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
     if (!requestNextLocked())
         return SPARKCAP_ERR_START_FAILED;
     m_running.store(true);
+    return SPARKCAP_ERR_OK;
+}
+
+int MfSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_running.load())
+        return SPARKCAP_ERR_UNSUPPORTED;  // 须在 start 前注册（Spec §4.5）
+    m_callbackDevice = device;
+    m_frameCallback = cb;
+    m_callbackUserdata = userdata;
     return SPARKCAP_ERR_OK;
 }
 
@@ -235,12 +263,19 @@ int MfSession::stop()
 
     if (m_reader != nullptr) {
         m_reader->Flush(kFirstVideoStream);
-        // Flush 完成即不再有在途回调（Spec §4.4-4：stop 等待在途回调返回）
+        // Flush 完成即不再有新回调进入；再等在途回调返回（Spec §4.4-4）
         WaitForSingleObject(m_flushEvent, 3000);
     }
+    while (m_activeCallbacks.load() > 0)
+        Sleep(1);  // 在途回调结束前不销毁资源
 
     std::lock_guard<std::mutex> lk(m_mutex);
     unlockFrameLocked();
+    m_reader.Reset();
+    if (m_source != nullptr) {
+        m_source->Shutdown();  // 与 start 对称：重启时按 m_path 重建
+        m_source.Reset();
+    }
     m_frame.data = nullptr;
     m_frame.size = 0;
     m_frame.timestamp = 0;
@@ -272,6 +307,7 @@ HRESULT MfSession::onSample(HRESULT hrStatus, DWORD streamFlags, LONGLONG timest
             m_frame.size = static_cast<int>(len);
             m_frame.timestamp = timestamp;
             SetEvent(m_frameEvent);
+            invokeCallbackLocked();         // 回调模式（F5）：采集线程直接交付，帧仅回调期间有效
         }
     }
 
@@ -393,6 +429,23 @@ void MfSession::unlockFrameLocked()
     m_frame.data = nullptr;
 }
 
+// 持锁调用用户回调：回调期间帧数据稳定；getFrame 会排队至回调返回。
+// 用户回调抛出的异常在此吞掉（C 回调契约），不中断采集泵。
+void MfSession::invokeCallbackLocked()
+{
+    if (m_frameCallback == nullptr)
+        return;
+    ++m_activeCallbacks;
+    {
+        CallbackGuard guard;  // 回调内 stop/close 返回 IN_CALLBACK（Spec §4.4-5）
+        try {
+            m_frameCallback(m_callbackDevice, &m_frame, m_callbackUserdata);
+        } catch (...) {
+        }
+    }
+    --m_activeCallbacks;
+}
+
 bool MfSession::requestNextLocked()
 {
     if (m_reader == nullptr)
@@ -463,7 +516,7 @@ int MfBackend::createSession(const sparkcap_device_info_t& info, ICaptureSession
         return rc;
 
     try {
-        *out = new MfSession(std::move(source));
+        *out = new MfSession(info.path, std::move(source));
         return SPARKCAP_ERR_OK;
     } catch (const std::bad_alloc&) {
         return SPARKCAP_ERR_NO_MEMORY;

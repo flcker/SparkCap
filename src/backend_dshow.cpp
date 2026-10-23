@@ -187,6 +187,7 @@ public:
 
     // ICaptureSession
     int start(int width, int height, sparkcap_pixfmt_t fmt, int fps) override;
+    int setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata) override;
     int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) override;
     int stop() override;
 
@@ -194,6 +195,7 @@ private:
     HRESULT onBuffer(double sampleTime, BYTE* buffer, long bufferLen);
     int buildGraphLocked();  // 组装 capture → grabber 图并解析输出格式
     void applyFormatPreferenceLocked(int width, int height, sparkcap_pixfmt_t fmt, int fps);
+    void invokeCallbackLocked();
 
     Microsoft::WRL::ComPtr<IBaseFilter>         m_sourceFilter;
     Microsoft::WRL::ComPtr<IGraphBuilder>       m_graph;
@@ -209,6 +211,10 @@ private:
     sparkcap_frame_t m_frame = {};
     std::atomic<bool> m_running{false};
     bool m_built = false;
+
+    sparkcap_device_t* m_callbackDevice = nullptr;  // 弱引用（生命周期 ⊂ device）
+    sparkcap_frame_cb  m_frameCallback = nullptr;
+    void*              m_callbackUserdata = nullptr;
 };
 
 DshowSession::DshowSession(Microsoft::WRL::ComPtr<IBaseFilter> sourceFilter)
@@ -257,6 +263,17 @@ int DshowSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
     if (FAILED(hr))
         return SPARKCAP_ERR_START_FAILED;
     m_running.store(true);
+    return SPARKCAP_ERR_OK;
+}
+
+int DshowSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_running.load())
+        return SPARKCAP_ERR_UNSUPPORTED;  // 须在 start 前注册（Spec §4.5）
+    m_callbackDevice = device;
+    m_frameCallback = cb;
+    m_callbackUserdata = userdata;
     return SPARKCAP_ERR_OK;
 }
 
@@ -314,7 +331,24 @@ HRESULT DshowSession::onBuffer(double sampleTime, BYTE* buffer, long bufferLen)
     m_frame.size = bufferLen;
     m_frame.timestamp = static_cast<int64_t>(sampleTime * 1e7);  // 秒 → 100ns
     SetEvent(m_frameEvent);
+    invokeCallbackLocked();  // 回调模式（F5）：graph 流线程直接交付，帧仅回调期间有效
     return S_OK;
+}
+
+// 持锁调用用户回调：回调期间帧缓冲稳定；getFrame 排队至回调返回。
+// IMediaControl::Stop 同步等待流线程，在途回调返回后 stop 才完成（Spec §4.4-4）。
+// 用户回调抛出的异常在此吞掉（C 回调契约），不中断采集。
+void DshowSession::invokeCallbackLocked()
+{
+    if (m_frameCallback == nullptr)
+        return;
+    {
+        CallbackGuard guard;  // 回调内 stop/close 返回 IN_CALLBACK（Spec §4.4-5）
+        try {
+            m_frameCallback(m_callbackDevice, &m_frame, m_callbackUserdata);
+        } catch (...) {
+        }
+    }
 }
 
 // 偏好选择：经 IAMStreamConfig::GetStreamCaps 枚举，w/h/fmt 全匹配的候选中取 fps 最近，

@@ -21,6 +21,20 @@ static const char* pixfmtName(sparkcap_pixfmt_t f)
     }
 }
 
+/* ---- 回调模式（F5）测试 ---- */
+
+static volatile LONG g_cbCount = 0;
+static volatile LONG g_cbStopRc = 0;
+
+static void onFrame(sparkcap_device_t* dev, const sparkcap_frame_t* frame, void* userdata)
+{
+    (void)frame;
+    (void)userdata;
+    const LONG n = InterlockedIncrement(&g_cbCount);
+    if (n == 1)
+        g_cbStopRc = sparkcap_stop(dev);  /* 回调内禁止 stop（Spec §4.4-5） */
+}
+
 int main(int argc, char** argv)
 {
     SetConsoleOutputCP(CP_UTF8);
@@ -115,6 +129,23 @@ int main(int argc, char** argv)
     rc = sparkcap_get_frame(dev, &frame, 100);
     printf("get_frame after stop -> %d (expect %d STREAM_LOST)\n",
            rc, SPARKCAP_ERR_STREAM_LOST);
+
+    /* 回调模式（F5）：stop 后重新注册回调并重启 */
+    g_cbCount = 0;
+    g_cbStopRc = 0;
+    rc = sparkcap_set_frame_callback(dev, onFrame, NULL);
+    if (rc == SPARKCAP_ERR_OK)
+        rc = sparkcap_start(dev, wantW, wantH, SPARKCAP_PIXFMT_UNKNOWN, 0);
+    if (rc != SPARKCAP_ERR_OK) {
+        printf("callback setup failed: %d\n", rc);
+    } else {
+        printf("callback mode running (20 frames) ...\n");
+        for (int i = 0; i < 1000 && g_cbCount < 20; ++i)
+            Sleep(10);
+        sparkcap_stop(dev);
+        printf("callback frames=%d, stop-in-callback rc=%d (expect %d)\n",
+               (int)g_cbCount, (int)g_cbStopRc, SPARKCAP_ERR_IN_CALLBACK);
+    }
 
     sparkcap_close(dev);
     free(devs);

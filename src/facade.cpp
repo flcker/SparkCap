@@ -197,11 +197,19 @@ int sparkcap_open(sparkcap_backend_t* backend, int deviceId, sparkcap_device_t**
     }
 }
 
-int sparkcap_set_frame_callback(sparkcap_device_t* /*device*/,
-                                sparkcap_frame_cb /*cb*/,
-                                void* /*userdata*/)
+int sparkcap_set_frame_callback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata)
 {
-    return SPARKCAP_ERR_UNSUPPORTED;  // 回调模式随 M2（统一帧层）落位
+    if (device == nullptr || cb == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;
+    if (!validDevice(device->owner, device))
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->session->setCallback(device, cb, userdata);
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
 }
 
 int sparkcap_start(sparkcap_device_t* device, int width, int height,
@@ -246,6 +254,8 @@ int sparkcap_stop(sparkcap_device_t* device)
 {
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
     if (!validDevice(device->owner, device))
         return SPARKCAP_ERR_INVALID_HANDLE;
     try {
@@ -259,6 +269,8 @@ int sparkcap_close(sparkcap_device_t* device)
 {
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
     sparkcap_backend_t* backend = device->owner;
     if (backend == nullptr || !validDevice(backend, device))
         return SPARKCAP_ERR_INVALID_HANDLE;

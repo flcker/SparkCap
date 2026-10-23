@@ -27,6 +27,8 @@ std::string instanceKey(const char* path)
 
 } // namespace
 
+thread_local bool g_inFrameCallback = false;
+
 int SparkCapDeviceManager::refreshDevices()
 {
     // 兜底策略：单路失败不阻止另一路出结果，两路全败才报错。
