@@ -99,4 +99,16 @@ const sparkcap_device_info_t* SparkCapDeviceManager::find(int deviceId) const
     return &m_deviceTable[deviceId];
 }
 
+int SparkCapDeviceManager::createSession(const sparkcap_device_info_t& info, ICaptureSession** out)
+{
+    switch (info.backend) {
+    case SPARKCAP_BACKEND_MF:
+        return m_mfBackend.createSession(info, out);
+    case SPARKCAP_BACKEND_DSHOW:
+        return m_dshowBackend.createSession(info, out);
+    default:
+        return SPARKCAP_ERR_UNSUPPORTED;
+    }
+}
+
 } // namespace sparkcap

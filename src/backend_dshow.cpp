@@ -31,6 +31,15 @@ bool readBagString(IPropertyBag* bag, const wchar_t* key, char* dst, size_t cap)
 
 } // namespace
 
+// 会话（ISampleGrabber + CaptureGraph）随 M1c 落位。
+int DshowBackend::createSession(const sparkcap_device_info_t& /*info*/, ICaptureSession** out)
+{
+    if (out == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *out = nullptr;
+    return SPARKCAP_ERR_UNSUPPORTED;
+}
+
 int DshowBackend::enumerateDevices(std::vector<sparkcap_device_info_t>& out)
 {
     using Microsoft::WRL::ComPtr;

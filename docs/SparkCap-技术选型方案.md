@@ -78,6 +78,7 @@
         int          height;
         PixelFormat  pixelFormat;   // 输出侧格式：NV12/YUY2/I420/MJPG；RGB32 仅当设备原生输出
         int          stride;
+        int          size;          // 帧数据字节长度：压缩格式必需；2D 格式 = stride × height
         int64_t      timestamp;
     };
 

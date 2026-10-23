@@ -31,8 +31,8 @@ target_include_directories(sparkcap
         $<INSTALL_INTERFACE:include>
 )
 
-# COM/MF/DShow 系统库：ole32+oleaut32（COM）、mfplat+mf+mfuuid（MF）、strmiids（DShow）
-target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid strmiids)
+# COM/MF/DShow 系统库：ole32+oleaut32（COM）、mfplat+mf+mfuuid+mfreadwrite（MF）、strmiids（DShow）
+target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid mfreadwrite strmiids)
 
 target_compile_features(sparkcap PRIVATE cxx_std_20)
 
@@ -57,3 +57,7 @@ target_compile_options(sparkcap PRIVATE /W4 /WX /utf-8)
 add_executable(list_devices examples/list_devices.c)
 target_link_libraries(list_devices PRIVATE sparkcap)
 target_compile_options(list_devices PRIVATE /W4 /WX /utf-8)
+
+add_executable(capture examples/capture.c)
+target_link_libraries(capture PRIVATE sparkcap)
+target_compile_options(capture PRIVATE /W4 /WX /utf-8)

@@ -6,6 +6,7 @@
 
 ### Added
 
+- M1b：MF 会话——`sparkcap_open`/`start`/`get_frame`/`stop`/`close` MF 路径真实现：IMFSourceReader 异步读取、native 类型直出（F9 保真）、buffer Lock 零拷贝帧描述、分辨率/格式偏好最近匹配（帧率匹配待 M1d）；`copy_frame`/`release_frame`（magic 标记一次分配布局，仅接受拷贝产物）；句柄注册表兑现 Spec §4.5（close 后句柄返回 INVALID_HANDLE 不崩溃）；demo `examples/capture.c`（实测 e2eSoft VCam 320×240 YUY2 连续 10 帧、stop 后 get_frame 返回 STREAM_LOST）
 - M1a：双后端设备枚举——`SparkCapDeviceManager`（MF 优先 + DShow 兜底，按设备实例去重，兼容同一设备挂不同 KS 类别导致的 symbolic link 差异）、`MfBackend`（MFEnumDeviceSources）/`DshowBackend`（SystemDeviceEnum）；facade 真实现 `create_backend`/`list_devices`/`destroy_backend`（COM/MF 生命周期、C ABI 边界异常翻译）；demo `examples/list_devices.c`（实测 3 设备：虚拟摄像头 ×2 + 软件源 ×1，去重正确）
 - 工程骨架：CMake 构建（`cmake --preset default` → `--preset release|debug`，VS2022 x64、静态 CRT /MT、/W4 /WX、/utf-8）
 - 公共头 `include/sparkcap.h` + `include/sparkcap_types.h`：12 个 C 门面 API、13 个错误码枚举、像素格式/后端枚举、帧与设备信息结构、帧回调类型（Spec §4 的代码化）
@@ -15,6 +16,8 @@
 - `third_party/ffmpeg/VERSION` 版本记录占位（M3 前锁定 tag + commit hash）
 
 ### Changed
+
+- `sparkcap_frame_t` 增加 `size` 字段（帧数据字节长度）：压缩格式（MJPG）无法从 width/height/stride 推出缓冲大小，`copy_frame` 与应用读取均需要
 
 - 三份设计文档 v1.0 → v1.1（评审修订）：
   - 接口表补 `sparkcap_set_frame_callback`（F5 回调模式此前无 API 支撑）与 `sparkcap_version`；

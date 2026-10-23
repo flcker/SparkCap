@@ -72,6 +72,7 @@ typedef struct sparkcap_frame_t {
     int               height;
     sparkcap_pixfmt_t pixelFormat;
     int               stride;
+    int               size;        /* 帧数据字节长度：压缩格式必需；2D 格式 = stride × height */
     int64_t           timestamp;
 } sparkcap_frame_t;
 

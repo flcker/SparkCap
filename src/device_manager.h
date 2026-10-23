@@ -22,8 +22,11 @@ public:
     // 否则写入至多 *inOutCount 项，*inOutCount 更新为实际总数（可能大于写入数）。
     int enumerate(sparkcap_device_info_t* infos, int* inOutCount);
 
-    // 按 deviceId 查设备表（M1b 的 open 使用）。
+    // 按 deviceId 查设备表（open 使用）。
     const sparkcap_device_info_t* find(int deviceId) const;
+
+    // 按设备来源创建采集会话（open 的后端分发；M1b：MF，DShow 待 M1c）。
+    int createSession(const sparkcap_device_info_t& info, ICaptureSession** out);
 
 private:
     std::vector<sparkcap_device_info_t> m_deviceTable;
