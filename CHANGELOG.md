@@ -6,7 +6,7 @@
 
 ### Added
 
-- `docs/SparkCap-编译环境安装指南.md`：新机器从零搭建编译环境——VS2022 安装与工具集验证、MSYS2 安装与 pacman 首次更新（含清华镜像）、构建工具安装（make/diffutils/nasm/yasm 及各自用途）、`msys2_shell.cmd -use-full-path` 就绪检查、常见安装问题
+- `docs/SparkCap-编译环境安装指南.md`：新机器从零搭建编译环境——VS2022 安装与工具集验证、MSYS2 安装与 pacman 首次更新（含清华镜像）与命令速查（参数含义/常用命令/部分升级警告）、构建工具安装（make/diffutils/nasm/yasm 及各自用途）、`msys2_shell.cmd -use-full-path` 就绪检查、常见安装问题
 - `docs/SparkCap-FFmpeg编译指南.md`：源码锁定（n9.0.2）、MSVC v14.44 静态裁剪编译全流程（Release /MT + Debug /MTd 双份）、configure 参数逐条说明、产物入库布局（成品 lib/include 入库，src/install 忽略）、dumpbin 验证与常见问题；环境部分引用安装指南
 - M2b（M2 收口）：拉取模式环形队列（`src/frame_queue.h` 模板，技术选型 §4 统一帧输出层）——8 槽环形缓冲：满丢最旧（保最新）、按序消费不丢帧（N2）、空时事件唤醒；MF 槽持 Lock 的 buffer 引用（移动语义转移 Unlock 义务），DShow 槽持拷贝缓冲（vector 移动保指针稳定）；getFrame 改两段式（先非阻塞取、空则等事件）；stop 唤醒等待者；实测 MF 50 帧时间戳零跳变（gaps=0，N2 ✓）
 - M2c：延迟/抖动数据（N3）——demo 回调模式 200 帧抖动统计：MF min=28.6ms / max=48.9ms / avg=40.0ms（max/avg=1.2），DShow avg=93ms / max/avg=2.8（YY开播 空闲输出不规律，属驱动行为）；N1 端到端延迟需拍屏法实测，留 M4 验收

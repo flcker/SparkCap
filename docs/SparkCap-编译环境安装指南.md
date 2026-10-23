@@ -83,7 +83,24 @@ MSYS2 用 `pacman` 管理软件包（与 Arch Linux 同源）。打开开始菜�
 > `Server = https://mirrors.tuna.tsinghua.edu.cn/msys2/mingw/x86_64/`
 > （`mirrorlist.msys` 对应路径为 `/msys2/msys/$arch/`）
 
-### 5.3 安装构建工具
+### 5.3 pacman 命令速查
+
+pacman 是 MSYS2 的包管理器（与 Arch Linux 同源）。参数拆开记：`-S`（**S**ynchronize，安装/升级）、`-y`（刷新包数据库）、`-u`（升级所有过期包）、`--needed`（已装且最新则跳过）。
+
+| 命令 | 作用 |
+|---|---|
+| `pacman -Syu` | 刷新数据库并升级全部已装包（首次安装后必做，见 §5.2） |
+| `pacman -S 包名` | 安装包 |
+| `pacman -S --needed 包1 包2` | 安装多个包（已装最新的自动跳过） |
+| `pacman -Ss 关键词` | 搜索仓库 |
+| `pacman -Qs 关键词` | 查询本机已装的包 |
+| `pacman -Q` | 列出全部已装包 |
+| `pacman -R 包名` | 卸载 |
+| `pacman -Rns 包名` | 卸载并清理配置与无人依赖 |
+
+**注意**：不要单独使用 `pacman -Sy`（只刷数据库不升级）——会造成"部分升级"状态，可能导致库版本错配；要刷数据库就带着 `-u` 一起。
+
+### 5.4 安装构建工具
 
 同一个 MSYS 终端执行：
 
@@ -100,7 +117,7 @@ MSYS2 用 `pacman` 管理软件包（与 Arch Linux 同源）。打开开始菜�
 
 > **不要**安装 `mingw-w64-x86_64-gcc` 系列——本流程全程用 MSVC 的 `cl`，装 GCC 容易误链错工具链。
 
-### 5.4 验证
+### 5.5 验证
 
 MSYS 终端执行：
 
