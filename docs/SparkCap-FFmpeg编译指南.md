@@ -107,7 +107,7 @@ CMake 已接好（`CMakeLists.txt`）：FFmpeg 头按 SYSTEM include + `/externa
     编译日期: 2026-10-xx
     configure: 见 docs/SparkCap-FFmpeg编译指南.md §4.2
 
-仓库的 `.gitignore` 忽略 `src/` 与 `install/`（源码树与临时安装），**成品 `lib/` 与 `include/` 入库**——团队成员链产物即可，无需本机重编（14.x ABI 兼容）。
+仓库的 `.gitignore` 忽略 `src/`、`install/` 与 `include/`（源码树、临时安装、FFmpeg 头文件），**仅成品 `lib/` 入库**——团队成员链产物即可，无需本机重编（14.x ABI 兼容）。注意：克隆后本机无 `include/` 时需先跑一次构建（或从维护者处拷贝头文件）才能编译主工程。
 
 ## 7. 验证
 
