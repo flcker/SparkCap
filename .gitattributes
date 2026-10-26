@@ -1,0 +1,28 @@
+# 换行符规范化（M1–M4 期间三次踩坑：bat LF 致 cmd 解析错乱、ps1 行尾敏感、git 警告刷屏）
+* text=auto
+
+# Windows 工具链脚本：必须 CRLF（PS 5.1 与 cmd 对 LF 敏感）
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+
+# Unix 工具链脚本：必须 LF（MSYS bash）
+*.sh   text eol=lf
+
+# 源码与文档
+*.c    text
+*.cpp  text
+*.h    text
+*.md   text
+*.json text
+*.def  text
+*.cmake text
+*.version text
+CMakeLists.txt text
+
+# 二进制（FFmpeg 成品库与构建产物）
+*.lib  binary
+*.exe  binary
+*.dll  binary
+*.pdb  binary
+*.ilk  binary
+*.xz   binary

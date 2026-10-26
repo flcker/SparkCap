@@ -6,6 +6,8 @@
 
 ### Added
 
+- **许可落地**：LGPL-3.0（LICENSE + COPYING/GPL-3.0 基底），依赖声明 THIRD-PARTY-NOTICES.md（FFmpeg LGPL-2.1+ 全文入 third_party/ffmpeg/LICENSE，纯 LGPL 构建路径声明，替换/重链途径说明），README 与 spec §9 同步
+- **工程规范化**：.gitattributes 换行策略（sh=LF、ps1/bat=CRLF、二进制标记），根治三次踩坑的行尾问题
 - M4d（M4 收口）：长稳与延迟测量基建，全套 12/12 全绿——
   - `soak_24h.exe [分钟]`：三后端轮换长稳 harness（默认 2 分钟冒烟进常规回归，夜间验收跑 1440；失败轮 ≤5%、稳态内存增长 <32MB 判定；短跑仅打印内存——首轮组件懒加载预热增长正常）
   - 拍屏法延迟工具（N1/A5 半自动）：`flash_screen.exe`（全屏黑白闪烁 + QPC 时间戳 CSV）+ `measure_latency.exe`（取帧亮度翻转检测 + 跨进程 QPC 对齐，自动按帧率折算 2 帧预算并判定）

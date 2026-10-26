@@ -124,7 +124,31 @@
 | 本地 RTSP 流 | `tools/start_test_stream.ps1` 探测 8554 端口 | RTSP/soak 用例 SKIP |
 | MediaMTX/ffmpeg | 脚本自检 | 提示安装路径，SKIP |
 
-MediaMTX 与推流 ffmpeg 为测试基建（不入库），脚本负责下载/启动/停止；下载走 `api.github.com` 资产端点（国内直连 GitHub 不通，已在 M3 验证）。
+### 6.1 MediaMTX：本地虚拟 IP Camera
+
+MediaMTX 是开源流媒体服务器（Go 编写、单 exe，原名 rtsp-simple-server）。本机没有真 IP Camera 时，它**在本地扮演虚拟 IP Camera 服务器**，使 RTSP 链路本机闭环——将来接真摄像头只需在 `sparkcap.json` 填真实 RTSP 地址，链路完全相同：
+
+    ffmpeg（testsrc2 合成 25fps H.264 画面）
+            │ 推流（ANNOUNCE）
+            ▼
+      MediaMTX（监听 :8554）
+            ▲ 拉流（DESCRIBE/SETUP/PLAY）
+            │
+    SparkCap FFmpeg 后端（库 = RTSP 客户端）
+
+承载的测试场景：
+
+| 测试 | MediaMTX 的作用 |
+|---|---|
+| I5/I6/I7（RTSP 会话/回调/守卫） | 提供持续的 rtsp://127.0.0.1:8554/test 流 |
+| S1/S2（断流重连 F10/N5） | **杀掉进程模拟摄像头断电**、重启模拟恢复——验证自动重连 |
+| S3（长稳轮换） | RTSP 轮流来源（服务不在时该轮 SKIP） |
+
+工程要点（M3/M4 实战结论）：
+
+- exe **不入库**，置于 `%TEMP%\msys2-setup\mediamtx\`；`tools/start_test_stream.ps1` 负责起/停/探测（幂等）
+- 下载走 `api.github.com` 资产端点（GitHub release 直连国内不通）
+- 推流源用 ffmpeg `testsrc2` 合成画面（无需视频文件），`-g 25` 保证每秒一个关键帧——重连时 SPS/PPS 等待短
 
 ## 7. 可测性重构项（建 testkit 前置）
 

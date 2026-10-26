@@ -160,6 +160,6 @@ JSON 示例：
 1. 是否需要音频采集；
 2. 是否需要 PTZ（ONVIF）控制；
 3. x86 是否列入首版；
-4. 许可合规结论；
+4. 许可合规结论（工程侧已选 LGPL-3.0 + 依赖声明 NOTICE，法务终审待完成）；
 5. 本地设备热插拔（USB 拔出事件通知，MF 侧有 MEVideoCaptureDeviceRemoved 事件可用）；
 6. 日志/诊断回调（sparkcap_set_log_callback）是否纳入首版接口。

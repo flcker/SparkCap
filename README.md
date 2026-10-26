@@ -99,4 +99,4 @@ Windows 10/11 x64（x86 待定，见 Spec §9-3）。VS2022 工具链，静态 C
 
 ## 许可
 
-TBD——FFmpeg 许可合规确认中（仅使用解码 + 系统硬解路径，见 Spec §9-4）。
+**LGPL-3.0**（见 [LICENSE](LICENSE) 与 [COPYING](COPYING)，后者为 LGPL 引用的 GPL-3.0 基底文本）。第三方依赖声明：[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)（FFmpeg，LGPL-2.1+，静态内嵌，纯 LGPL 构建路径）。下游动态链接 sparkcap.dll 无开源义务。
