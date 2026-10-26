@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-10-23
 - 状态：待评审
-- 关联文档：SparkCap-FFmpeg编译指南.md（环境搭好后按它编译 FFmpeg）
+- 关联文档：building-ffmpeg.md（环境搭好后按它编译 FFmpeg）
 
 ---
 
@@ -147,7 +147,7 @@ MSYS 终端执行：
 
 **第 3 步**：版本记录。把 `cl` 版本号（14.xx）记下来——编译 FFmpeg 时写入 `third_party/ffmpeg/VERSION`。
 
-环境就绪，接下来按 **docs/SparkCap-FFmpeg编译指南.md §3** 开始编译。
+环境就绪，接下来按 **docs/building-ffmpeg.md §3** 开始编译。
 
 ## 7. 常见问题
 

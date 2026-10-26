@@ -7,14 +7,14 @@
 extern "C" {
 #endif
 
-/* 导出宏（docs/SparkCap-命名规范.md §6） */
+/* 导出宏（docs/naming-conventions.md §6） */
 #if defined(SPARKCAP_EXPORTS)
 #  define SPARKCAP_API __declspec(dllexport)
 #else
 #  define SPARKCAP_API __declspec(dllimport)
 #endif
 
-/* 版本（docs/SparkCap-命名规范.md §7） */
+/* 版本（docs/naming-conventions.md §7） */
 #define SPARKCAP_VERSION_MAJOR 1
 #define SPARKCAP_VERSION_MINOR 0
 #define SPARKCAP_VERSION_PATCH 0

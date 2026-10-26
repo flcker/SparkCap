@@ -1,4 +1,4 @@
-// U1–U4：IP Camera JSON 配置解析（docs/SparkCap-测试计划.md §5.1）
+// U1–U4：IP Camera JSON 配置解析（docs/testing-guide.md §5.1）
 
 #include "../test_macros.h"
 

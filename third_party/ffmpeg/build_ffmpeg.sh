@@ -1,5 +1,5 @@
 #!/bin/bash
-# SparkCap FFmpeg 静态裁剪构建脚本（docs/SparkCap-FFmpeg编译指南.md §4）
+# SparkCap FFmpeg 静态裁剪构建脚本（docs/building-ffmpeg.md §4）
 # 用法：在 x64 Native Tools 环境下执行
 #   C:\msys64\msys2_shell.cmd -defterm -no-start -use-full-path <本脚本> [Release|Debug]
 # 前置：src/ 已就位（n9.0.2 源码）、构建工具已装（make/diffutils/nasm/yasm）

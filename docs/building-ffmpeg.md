@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-10-23
 - 状态：待评审
-- 关联文档：SparkCap-技术选型方案.md §7、SparkCap-命名规范.md §5/§7
+- 关联文档：design.md §7、naming.md §5/§7
 
 ---
 
@@ -25,7 +25,7 @@
 
 ## 2. 环境准备（一次性）
 
-按 **docs/SparkCap-编译环境安装指南.md** 安装并验证（VS2022 + MSYS2 + make/diffutils/nasm/yasm，以及 `msys2_shell.cmd -use-full-path` 的正确启动方式）。本指南从环境就绪处开始。
+按 **docs/environment-setup.md** 安装并验证（VS2022 + MSYS2 + make/diffutils/nasm/yasm，以及 `msys2_shell.cmd -use-full-path` 的正确启动方式）。本指南从环境就绪处开始。
 
 - 前提：VS2022（FFmpeg 编译机器锁定 v14.44，记录于 VERSION）；主工程仅要求 ≥ 14.30
 - 磁盘：源码 + 编译产物约 2 GB

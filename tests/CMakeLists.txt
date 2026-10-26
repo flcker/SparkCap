@@ -1,4 +1,4 @@
-# SparkCap 测试（docs/SparkCap-测试计划.md）
+# SparkCap 测试（docs/testing-guide.md）
 # 分层标签：unit（零依赖）/ integration（需设备或流）/ soak（M4 验收）
 # ctest --test-dir build -C Release -L unit
 

@@ -1,4 +1,4 @@
-// SparkCap 测试断言宏（tests 内部，零依赖，见 docs/SparkCap-测试计划.md §3）。
+// SparkCap 测试断言宏（tests 内部，零依赖，见 docs/testing-guide.md §3）。
 // 用法：每个测试文件含 main，逐个 RUN_CASE；任一断言失败 -> 进程退出码非零（CTest 判定）。
 
 #pragma once

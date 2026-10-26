@@ -77,6 +77,6 @@ add_executable(capture examples/capture.c)
 target_link_libraries(capture PRIVATE sparkcap)
 target_compile_options(capture PRIVATE /W4 /WX /utf-8)
 
-# ---- 测试（tests/，ctest 驱动，见 docs/SparkCap-测试计划.md）----
+# ---- 测试（tests/，ctest 驱动，见 docs/testing-guide.md）----
 enable_testing()
 add_subdirectory(tests)

@@ -1,4 +1,4 @@
-// U5–U7：帧环形队列语义（docs/SparkCap-测试计划.md §5.1）
+// U5–U7：帧环形队列语义（docs/testing-guide.md §5.1）
 
 #include "../test_macros.h"
 

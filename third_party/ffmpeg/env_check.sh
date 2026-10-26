@@ -1,5 +1,5 @@
 #!/bin/bash
-# 构建环境就绪检查（docs/SparkCap-编译环境安装指南.md §6）
+# 构建环境就绪检查（docs/environment-setup.md §6）
 # 用法：x64 Native Tools 环境下 msys2_shell.cmd -no-start -use-full-path <本脚本>
 set -e
 echo "== MSYS: $(uname -s)"

@@ -1,4 +1,4 @@
-// U11：错误码枚举值与 Spec §4.2 对齐（docs/SparkCap-测试计划.md §5.1）
+// U11：错误码枚举值与 Spec §4.2 对齐（docs/testing-guide.md §5.1）
 // ABI 稳定性：数值一旦发布不可变更，此测试就是契约锁。
 
 #include "../test_macros.h"

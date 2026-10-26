@@ -88,9 +88,9 @@ int main(void)
 
 | 文档 | 内容 |
 |---|---|
-| [技术选型方案](docs/SparkCap-技术选型方案.md) | 架构决策、方案对比、里程碑 |
-| [Spec](docs/SparkCap-Spec.md) | 接口契约、线程模型、验收标准 |
-| [命名规范](docs/SparkCap-命名规范.md) | 符号、目录、导出控制 |
+| [技术选型方案](docs/technical-design.md) | 架构决策、方案对比、里程碑 |
+| [Spec](docs/spec.md) | 接口契约、线程模型、验收标准 |
+| [命名规范](docs/naming-conventions.md) | 符号、目录、导出控制 |
 | [CHANGELOG](CHANGELOG.md) | 变更记录 |
 
 ## 平台

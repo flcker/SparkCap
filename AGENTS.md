@@ -6,12 +6,12 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 
 | 文档 | 职责 |
 |---|---|
-| docs/SparkCap-技术选型方案.md | 架构决策、方案对比、里程碑 M1–M4 |
-| docs/SparkCap-Spec.md | 接口契约、线程模型、验收标准 |
-| docs/SparkCap-命名规范.md | 符号、目录、导出控制、产物命名 |
-| docs/SparkCap-编译环境安装指南.md | 新机器环境搭建（VS2022/MSYS2/工具，M3） |
-| docs/SparkCap-FFmpeg编译指南.md | FFmpeg 静态裁剪编译全流程（M3） |
-| docs/SparkCap-测试计划.md | 测试分层、用例清单（U/I/S 系）、M4 验收映射 |
+| docs/technical-design.md | 架构决策、方案对比、里程碑 M1–M4 |
+| docs/spec.md | 接口契约、线程模型、验收标准 |
+| docs/naming-conventions.md | 符号、目录、导出控制、产物命名 |
+| docs/environment-setup.md | 新机器环境搭建（VS2022/MSYS2/工具，M3） |
+| docs/building-ffmpeg.md | FFmpeg 静态裁剪编译全流程（M3） |
+| docs/testing-guide.md | 测试分层、用例清单（U/I/S 系）、M4 验收映射 |
 
 **规则：改对外接口、错误码或语义时，先改 Spec 再改代码，保持两者一致；显著变更记入 [CHANGELOG.md](CHANGELOG.md) 的 Unreleased 段。**
 
@@ -36,11 +36,14 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 ## 目录结构
 
     include/            # 公开头（sparkcap.h、sparkcap_types.h，仅此两个）
-    src/                # 实现（facade.cpp、device_manager、backend_mf、backend_dshow、sparkcap.def 等）
-    examples/           # 可运行 demo（list_devices 等）
-    third_party/ffmpeg/ # 静态库与头，不入导出（版本记录见 VERSION）
-    docs/               # 三份设计文档
+    src/                # 实现（facade.cpp、device_manager、backend_*、sparkcap.def 等）
+    examples/           # 示例：给接入方抄的最小用法，不做判定（永不因断言失败）
+    tests/              # 测试：机器判定 pass/fail（ctest 驱动，回归门禁）
+    third_party/ffmpeg/ # 构建脚本与 VERSION（产物不入库，见 FFmpeg 编译指南）
+    docs/               # 设计文档
     out/x64/<Config>/   # 构建产物（不入库）
+
+**examples 与 tests 的判据**：接入方想抄的代码放 examples；改坏了要报警的断言放 tests。examples/capture.c 现存的验证逻辑（expect 比对、gaps 检测、jitter 统计）随 M4 集成层落地时搬入 tests/integration，demo 瘦身为纯示例。
 
 ## 构建与验证
 

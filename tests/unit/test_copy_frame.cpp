@@ -1,4 +1,4 @@
-// U8–U10：帧深拷贝与释放（C ABI，docs/SparkCap-测试计划.md §5.1）
+// U8–U10：帧深拷贝与释放（C ABI，docs/testing-guide.md §5.1）
 
 #include "../test_macros.h"
 

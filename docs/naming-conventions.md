@@ -3,7 +3,7 @@
 - 版本：1.1
 - 日期：2026-10-23
 - 状态：待评审
-- 关联文档：SparkCap-技术选型方案.md、SparkCap-Spec.md
+- 关联文档：design.md、spec.md
 
 ## 1. 目标
 
