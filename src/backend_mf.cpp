@@ -5,6 +5,7 @@
 
 #include "backend_mf.h"
 #include "frame_queue.h"
+#include "pixfmt_map.h"
 #include "str_util.h"
 
 #include <mfapi.h>
@@ -46,27 +47,6 @@ int createSourceFromPath(const char* path, Microsoft::WRL::ComPtr<IMFMediaSource
     if (FAILED(MFCreateDeviceSource(attrs.Get(), out->GetAddressOf())))
         return SPARKCAP_ERR_DEVICE_BUSY;  // 打不开常见于被占用
     return SPARKCAP_ERR_OK;
-}
-
-// ---- 像素格式映射（MF subtype ↔ sparkcap_pixfmt_t）----
-
-bool pixFmtFromGuid(const GUID& g, sparkcap_pixfmt_t* out)
-{
-    if (IsEqualGUID(g, MFVideoFormat_NV12))
-        *out = SPARKCAP_PIXFMT_NV12;
-    else if (IsEqualGUID(g, MFVideoFormat_YUY2))
-        *out = SPARKCAP_PIXFMT_YUY2;
-    else if (IsEqualGUID(g, MFVideoFormat_I420))
-        *out = SPARKCAP_PIXFMT_I420;
-    else if (IsEqualGUID(g, MFVideoFormat_MJPG))
-        *out = SPARKCAP_PIXFMT_MJPG;
-    else if (IsEqualGUID(g, MFVideoFormat_ARGB32) || IsEqualGUID(g, MFVideoFormat_RGB32))
-        *out = SPARKCAP_PIXFMT_RGB32;
-    else if (IsEqualGUID(g, MFVideoFormat_RGB24))
-        *out = SPARKCAP_PIXFMT_RGB24;
-    else
-        return false;
-    return true;
 }
 
 // ---- MF 会话 ----
@@ -411,7 +391,7 @@ int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fm
         Cand c;
         c.w = num;
         c.h = den;
-        if (FAILED(type->GetGUID(MF_MT_SUBTYPE, &sub)) || !pixFmtFromGuid(sub, &c.pf))
+        if (FAILED(type->GetGUID(MF_MT_SUBTYPE, &sub)) || !pixFmtFromMf(sub, &c.pf))
             continue;  // 库不认识的 subtype 跳过
         if (SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &num, &den)) && den > 0)
             c.fps = static_cast<int>((num + den / 2) / den);  // 四舍五入
@@ -612,7 +592,7 @@ int MfBackend::getFormats(const sparkcap_device_info_t& info,
             FAILED(type->GetGUID(MF_MT_SUBTYPE, &sub)))
             continue;
         sparkcap_pixfmt_t pf;
-        if (!pixFmtFromGuid(sub, &pf))
+        if (!pixFmtFromMf(sub, &pf))
             continue;
 
         int fps = 0;

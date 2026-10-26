@@ -11,8 +11,11 @@
 
 namespace sparkcap {
 
-// 读取当前工作目录下的 sparkcap.json，返回 IP Camera 设备条目
-// （backend = SPARKCAP_BACKEND_FFMPEG，path = url）。
+// 从指定文件加载 IP Camera 设备条目（backend = SPARKCAP_BACKEND_FFMPEG，path = url）。
+// 文件缺失或格式错误时返回空列表（不视为错误）。测试注入路径用。
+std::vector<sparkcap_device_info_t> loadJsonCamerasFromFile(const char* path);
+
+// 读取当前工作目录下的 sparkcap.json（默认入口）。
 std::vector<sparkcap_device_info_t> loadJsonCameras();
 
 } // namespace sparkcap

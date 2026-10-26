@@ -11,6 +11,7 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 | docs/SparkCap-命名规范.md | 符号、目录、导出控制、产物命名 |
 | docs/SparkCap-编译环境安装指南.md | 新机器环境搭建（VS2022/MSYS2/工具，M3） |
 | docs/SparkCap-FFmpeg编译指南.md | FFmpeg 静态裁剪编译全流程（M3） |
+| docs/SparkCap-测试计划.md | 测试分层、用例清单（U/I/S 系）、M4 验收映射 |
 
 **规则：改对外接口、错误码或语义时，先改 Spec 再改代码，保持两者一致；显著变更记入 [CHANGELOG.md](CHANGELOG.md) 的 Unreleased 段。**
 
@@ -45,14 +46,16 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 
     cmake --preset default
     cmake --build --preset release
+    ctest --test-dir build -C Release -L unit    # 单测（零环境依赖，提交前必跑）
 
 产物：`out/x64/Release/sparkcap.dll`（Debug 为 `sparkcapd.dll`）。
 
 提交前验证：
 
 1. 编译零警告（/W4 /WX）；
-2. `dumpbin /exports out/x64/Release/sparkcap.dll` 只含 `src/sparkcap.def` 列出的符号，无 `av*`；
-3. `dumpbin /dependents` 无 avcodec-*.dll 等第三方依赖。
+2. `ctest -L unit` 全绿；
+3. `dumpbin /exports out/x64/Release/sparkcap.dll` 只含 `src/sparkcap.def` 列出的符号，无 `av*`；
+4. `dumpbin /dependents` 无 avcodec-*.dll 等第三方依赖。
 
 ## 许可警示
 

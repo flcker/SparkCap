@@ -5,6 +5,7 @@
 
 #include "backend_ffmpeg.h"
 #include "frame_queue.h"
+#include "pixfmt_map.h"
 
 // libav 顶层头自带 extern "C"，但子头（time.h 等）单独包含无保护——统一外裹
 extern "C" {
@@ -24,19 +25,6 @@ extern "C" {
 
 namespace sparkcap {
 namespace {
-
-// ---- AVPixelFormat ↔ sparkcap_pixfmt_t（M3 支持软解主流输出）----
-
-bool pixFmtFromAv(int avFmt, sparkcap_pixfmt_t* out)
-{
-    if (avFmt == AV_PIX_FMT_YUV420P)
-        *out = SPARKCAP_PIXFMT_I420;
-    else if (avFmt == AV_PIX_FMT_NV12)
-        *out = SPARKCAP_PIXFMT_NV12;
-    else
-        return false;
-    return true;
-}
 
 // 队列槽：planar 帧重排为连续布局后的拷贝（解码器缓冲会被复用，必须拷贝）
 struct FsQueueSlot {

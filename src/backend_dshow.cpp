@@ -6,6 +6,7 @@
 
 #include "backend_dshow.h"
 #include "frame_queue.h"
+#include "pixfmt_map.h"
 #include "str_util.h"
 
 #include <dshow.h>
@@ -22,32 +23,6 @@
 
 namespace sparkcap {
 namespace {
-
-// ---- subtype ↔ pixfmt ----
-
-// 本 SDK 的 uuids.h 无 MEDIASUBTYPE_I420（DShow 传统用 IYUV），按 FOURCC GUID 模板自定义：
-// Data1 = 'I420'，标准后缀 {0000-0010-8000-00AA-00389B71}
-static const GUID kMediasubtypeI420 = {
-    0x30323449, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
-
-bool pixFmtFromSubtype(const GUID& g, sparkcap_pixfmt_t* out)
-{
-    if (IsEqualGUID(g, MEDIASUBTYPE_NV12))
-        *out = SPARKCAP_PIXFMT_NV12;
-    else if (IsEqualGUID(g, MEDIASUBTYPE_YUY2))
-        *out = SPARKCAP_PIXFMT_YUY2;
-    else if (IsEqualGUID(g, kMediasubtypeI420))
-        *out = SPARKCAP_PIXFMT_I420;
-    else if (IsEqualGUID(g, MEDIASUBTYPE_MJPG))
-        *out = SPARKCAP_PIXFMT_MJPG;
-    else if (IsEqualGUID(g, MEDIASUBTYPE_RGB32))
-        *out = SPARKCAP_PIXFMT_RGB32;
-    else if (IsEqualGUID(g, MEDIASUBTYPE_RGB24))
-        *out = SPARKCAP_PIXFMT_RGB24;
-    else
-        return false;
-    return true;
-}
 
 // 读 IPropertyBag 字符串属性；成功返回 true 并写出 UTF-8。
 bool readBagString(IPropertyBag* bag, const wchar_t* key, char* dst, size_t cap)
@@ -126,7 +101,7 @@ bool formatFromVideoInfo(const AM_MEDIA_TYPE* pmt, sparkcap_device_format_t* out
     const int h = static_cast<int>(vi->bmiHeader.biHeight < 0 ? -vi->bmiHeader.biHeight
                                                               : vi->bmiHeader.biHeight);
     sparkcap_pixfmt_t pf;
-    if (w <= 0 || h <= 0 || !pixFmtFromSubtype(pmt->subtype, &pf))
+    if (w <= 0 || h <= 0 || !pixFmtFromDshow(pmt->subtype, &pf))
         return false;
     out->width = w;
     out->height = h;
@@ -495,7 +470,7 @@ int DshowSession::buildGraphLocked()
                                        : vi->bmiHeader.biHeight);
 
     sparkcap_pixfmt_t pf;
-    if (w <= 0 || h <= 0 || !pixFmtFromSubtype(conn.subtype, &pf)) {
+    if (w <= 0 || h <= 0 || !pixFmtFromDshow(conn.subtype, &pf)) {
         CoTaskMemFree(conn.pbFormat);
         return SPARKCAP_ERR_UNSUPPORTED;
     }

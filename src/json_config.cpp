@@ -203,11 +203,11 @@ private:
 
 } // namespace
 
-std::vector<sparkcap_device_info_t> loadJsonCameras()
+std::vector<sparkcap_device_info_t> loadJsonCamerasFromFile(const char* path)
 {
     std::vector<sparkcap_device_info_t> cameras;
     FILE* f = nullptr;
-    if (fopen_s(&f, "sparkcap.json", "rb") != 0 || f == nullptr)
+    if (fopen_s(&f, path, "rb") != 0 || f == nullptr)
         return cameras;  // 无配置文件：正常（只用系统设备）
 
     std::string text;
@@ -220,6 +220,11 @@ std::vector<sparkcap_device_info_t> loadJsonCameras()
     JsonParser parser(text);
     parser.parseCameras(cameras);  // 失败返回已解析部分（宽容）
     return cameras;
+}
+
+std::vector<sparkcap_device_info_t> loadJsonCameras()
+{
+    return loadJsonCamerasFromFile("sparkcap.json");
 }
 
 } // namespace sparkcap

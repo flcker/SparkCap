@@ -6,6 +6,9 @@
 
 ### Added
 
+- **测试体系**（docs/SparkCap-测试计划.md）：分层 testkit——unit（零环境依赖，CI 候选）/ integration（设备与流，缺环境自动 skip）/ soak（M4 验收专项），用例清单 U1–U14 / I1–I14 / S1–S4 直接映射 Spec 的 F/A/N；自写断言宏（零第三方依赖）+ CTest 驱动
+- **单测层落地**（5 套件全绿，0.43s）：json 解析（合法/缺失/非法/非 rtsp/转义）、FrameQueue（按序/满丢最旧/clear）、copy_frame 语义（逐字节一致/非法入参/拒绝外部指针）、错误码与像素格式枚举值 ABI 锁、三后端 pixfmt 映射完整性
+- 可测性重构：`loadJsonCamerasFromFile(path)` 参数化；三后端 pixfmt 映射集中到 `src/pixfmt_map.h`（实现与单测共用）
 - M3：FFmpeg 后端 + RTSP 接入（里程碑达成）——
   - FFmpeg n9.0.2 静态裁剪编译（MSVC v14.44，Release /MT 与 Debug /MTd 双份；构建固化为 `third_party/ffmpeg/build_ffmpeg.sh`，产物 41 MB 静态库链入后 DLL 仅增量 2.6 MB，总 3.7 MB，N6 达标；dumpbin 实测导出 0 个 av* 符号、依赖纯系统库，A7 达标）
   - `src/backend_ffmpeg.cpp`：`FfmpegSession`——库内部采集线程（demux → 解码 → planar 帧重排连续布局入环形队列），interrupt_callback 中断阻塞 IO（stop 即时收束），IO 静默（av_log QUIET），analyzeduration 10s 容忍重连等 IDR
