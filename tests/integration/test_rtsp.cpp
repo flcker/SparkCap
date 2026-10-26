@@ -35,6 +35,8 @@ int main()
         std::printf("test stream unavailable, suite skipped\n");
         return 0;
     }
+    // 流服务监听后推流端仍需数秒出首帧/同步 SDP：等推流稳定再开测
+    Sleep(4000);
 
     sparkcap_backend_t* backend = nullptr;
     if (sparkcap_create_backend(&backend) != SPARKCAP_ERR_OK || backend == nullptr) {

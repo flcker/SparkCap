@@ -53,6 +53,7 @@ private:
     int openLocked();    // 打开输入 + 定位视频流 + 打开解码器
     void closeLocked();
     void demuxMain();    // 采集线程：读包 → 解码 → 入队（Spec §4.4-1）
+    bool reconnect();    // 断流重连（F10/N5）：指数退避，stop 可中断，无限重试
     bool pushFrameLocked(const AVFrame* f);
     bool popFrameLocked(sparkcap_frame_t* outFrame);
     void invokeCallbackLocked();
@@ -76,7 +77,7 @@ private:
     sparkcap_frame_t m_frameDesc = {};         // 格式骨架（首帧时定）
     FrameQueue<FsQueueSlot> m_queue{8};
     FsQueueSlot m_consumed;
-    bool m_streamFailed = false;
+    std::atomic<bool> m_reconnecting{false};   // 断流重连中（F10）
 
     sparkcap_device_t* m_callbackDevice = nullptr;
     sparkcap_frame_cb  m_frameCallback = nullptr;
@@ -110,13 +111,21 @@ int FfmpegSession::openLocked()
     // SPS/PPS 只随 IDR 走：重连需等下个关键帧，放宽分析窗口避免流参数解析失败
     av_dict_set(&opts, "analyzeduration", "10000000", 0);  // 10 s
     av_dict_set(&opts, "probesize", "10000000", 0);
+    // RTSP socket 超时（微秒；FFmpeg 5+ 由 stimeout 改名 timeout）：
+    // 服务器强杀后 TCP 挂起的兜底，配合 interrupt_callback 双保险
+    av_dict_set(&opts, "timeout", "5000000", 0);  // 5 s
 
+    // 先建 context 并挂中断回调再打开：avformat_open_input 期间的
+    // 连接/握手阻塞同样受 stop 中断（否则重连挂起时 stop 无法收束）
+    m_fmt = avformat_alloc_context();
+    m_fmt->interrupt_callback = {interruptCb, this};
     const int rc = avformat_open_input(&m_fmt, m_url.c_str(), nullptr, &opts);
     av_dict_free(&opts);
-    if (rc < 0)
+    if (rc < 0) {
+        // open 失败时 FFmpeg 释放 context 并置 m_fmt 为 null，closeLocked 为空操作
+        closeLocked();
         return SPARKCAP_ERR_NOT_FOUND;  // URL 不通/认证失败/流不存在
-
-    m_fmt->interrupt_callback = {interruptCb, this};
+    }
 
     if (avformat_find_stream_info(m_fmt, nullptr) < 0) {
         closeLocked();
@@ -178,10 +187,12 @@ void FfmpegSession::demuxMain()
     while (m_running.load() && !m_stopRequested.load()) {
         const int rc = av_read_frame(m_fmt, m_pkt);
         if (rc < 0) {
-            std::lock_guard<std::mutex> lk(m_mutex);
-            m_streamFailed = true;  // 断流/EOF/中断
-            SetEvent(m_frameEvent);
-            break;
+            av_packet_unref(m_pkt);
+            if (m_stopRequested.load())
+                break;  // stop 引起的中断
+            if (!reconnect())  // F10：断流自动重连（stop 中断时返回 false）
+                break;
+            continue;
         }
         if (m_pkt->stream_index != m_videoStream) {
             av_packet_unref(m_pkt);
@@ -208,6 +219,35 @@ void FfmpegSession::demuxMain()
             av_usleep(1000);
         }
     }
+}
+
+// F10/N5：断流重连——清空过期帧与流资源，指数退避（1s→2s→4s 封顶）无限重试，
+// 直至成功或 stop；期间 getFrame 持续等待（应用仅感知短暂 TIMEOUT）。
+bool FfmpegSession::reconnect()
+{
+    // 持锁仅做快速清理；流资源的关闭/重开不持锁——m_fmt/m_dec 仅本线程
+    //（demux）访问，网络慢操作若持锁会堵死 getFrame 的等锁段。
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_queue.clear();  // 断流时刻起的旧帧过期
+        m_consumed = FsQueueSlot();
+    }
+    closeLocked();  // 无锁
+    m_reconnecting.store(true);
+    int delayMs = 1000;
+    while (m_running.load() && !m_stopRequested.load()) {
+        Sleep(delayMs);
+        if (!m_running.load() || m_stopRequested.load())
+            break;
+        if (openLocked() == SPARKCAP_ERR_OK) {  // 无锁：网络慢操作
+            m_reconnecting.store(false);
+            return true;
+        }
+        // openLocked 各失败分支内部已 closeLocked
+        delayMs = (delayMs < 4000) ? delayMs * 2 : 4000;
+    }
+    m_reconnecting.store(false);
+    return false;
 }
 
 // 解码帧重排为连续布局并拷贝入队（Spec §4.3 有效期由槽缓冲保证）
@@ -313,14 +353,16 @@ int FfmpegSession::start(int width, int height, sparkcap_pixfmt_t fmt, int fps)
     if (m_running.load())
         return SPARKCAP_ERR_UNSUPPORTED;
 
+    // 必须在 open 前清除中断标志：否则重启的 avformat_open_input
+    // 会被残留的 interrupt_callback（上次 stop 置位）立即掐死
+    m_stopRequested.store(false);
+
     const int rc = openLocked();
     if (rc != SPARKCAP_ERR_OK)
         return rc;
 
     ResetEvent(m_frameEvent);
-    m_streamFailed = false;
     m_running.store(true);
-    m_stopRequested.store(false);
     m_thread = std::thread(&FfmpegSession::demuxMain, this);
     return SPARKCAP_ERR_OK;
 }
@@ -343,12 +385,11 @@ int FfmpegSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
 
     {
         std::lock_guard<std::mutex> lk(m_mutex);
-        if (m_streamFailed)
-            return SPARKCAP_ERR_STREAM_LOST;
         if (popFrameLocked(outFrame))
             return SPARKCAP_ERR_OK;
     }
 
+    // 队列空：等新帧。重连中亦等待（N5：应用无感知断流，最多感知 TIMEOUT）。
     const DWORD wait = (timeoutMs < 0) ? INFINITE : static_cast<DWORD>(timeoutMs);
     const DWORD wr = WaitForSingleObject(m_frameEvent, wait);
     if (wr == WAIT_TIMEOUT)
@@ -359,11 +400,9 @@ int FfmpegSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
         return SPARKCAP_ERR_STREAM_LOST;  // stop 唤醒
 
     std::lock_guard<std::mutex> lk(m_mutex);
-    if (m_streamFailed)
-        return SPARKCAP_ERR_STREAM_LOST;
     if (popFrameLocked(outFrame))
         return SPARKCAP_ERR_OK;
-    return SPARKCAP_ERR_STREAM_LOST;
+    return SPARKCAP_ERR_TIMEOUT;  // 事件触发但无帧（重连窗口竞态）：按超时让应用重试
 }
 
 int FfmpegSession::stop()

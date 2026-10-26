@@ -56,3 +56,13 @@ sparkcap_integration_test(mf)
 sparkcap_integration_test(dshow)
 sparkcap_integration_test(multidevice)
 sparkcap_integration_test(rtsp)
+
+# ---- soak（M4 验收专项：重连/长稳）----
+add_executable(test_soak_reconnect soak/test_reconnect.cpp)
+target_link_libraries(test_soak_reconnect PRIVATE sparkcap)
+target_compile_features(test_soak_reconnect PRIVATE cxx_std_20)
+target_compile_options(test_soak_reconnect PRIVATE /W4 /WX /utf-8)
+add_test(NAME soak_reconnect
+         COMMAND $<TARGET_FILE:test_soak_reconnect>
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(soak_reconnect PROPERTIES LABELS "soak")

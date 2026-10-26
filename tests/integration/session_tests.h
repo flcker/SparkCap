@@ -44,7 +44,10 @@ void case_session_flow(sparkcap_backend_t* backend, int deviceId)  // I3 + I8 + 
     if (dev == nullptr)
         return;
 
-    CHECK_EQ(sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
+    const int startRc = sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0);
+    if (startRc != SPARKCAP_ERR_OK)
+        std::printf("    start rc=%d\n", startRc);
+    CHECK_EQ(startRc, SPARKCAP_ERR_OK);
 
     int64_t lastTs = 0;
     int got = 0;

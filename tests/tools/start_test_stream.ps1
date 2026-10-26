@@ -1,4 +1,4 @@
-# 本地 RTSP 测试流基建（testing-guide §6）：MediaMTX + ffmpeg testsrc2 推流
+﻿# 本地 RTSP 测试流基建（testing-guide §6）：MediaMTX + ffmpeg testsrc2 推流
 # 用法：
 #   start_test_stream.ps1 -Start     # 起流（幂等）
 #   start_test_stream.ps1 -Stop      # 停流
@@ -7,7 +7,9 @@
 #       ffmpeg（PATH）
 
 param(
-    [Parameter(Position = 0)][ValidateSet('Start', 'Stop', 'Probe')] [string]$Action = 'Probe',
+    [switch]$Start,
+    [switch]$Stop,
+    [switch]$Probe,
     [string]$MediaMtx = "$env:TEMP\msys2-setup\mediamtx\mediamtx.exe"
 )
 
@@ -18,33 +20,34 @@ function Test-StreamUp {
     (Test-NetConnection 127.0.0.1 -Port $RtspPort -InformationLevel Quiet -WarningAction SilentlyContinue)
 }
 
-switch ($Action) {
-    'Probe' {
-        if (Test-StreamUp) { "UP"; exit 0 } else { "DOWN"; exit 1 }
-    }
-    'Stop' {
-        Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" |
-            Where-Object { $_.CommandLine -like "*$RtspPort*" } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-        Get-Process mediamtx -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        "stopped"
-    }
-    'Start' {
-        if (Test-StreamUp) { "already up"; exit 0 }
-        if (-not (Test-Path $MediaMtx)) {
-            Write-Error "mediamtx.exe not found: $MediaMtx（用 -MediaMtx 指定路径）"
-            exit 2
-        }
-        Start-Process -WindowStyle Hidden $MediaMtx -WorkingDirectory (Split-Path $MediaMtx)
-        Start-Sleep 3
-        if (-not (Test-StreamUp)) { Write-Error "mediamtx failed to listen :$RtspPort"; exit 3 }
-        Start-Process -WindowStyle Hidden ffmpeg -ArgumentList @(
-            '-re', '-f', 'lavfi', '-i', 'testsrc2=size=640x480:rate=25',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-            '-pix_fmt', 'yuv420p', '-g', '25', '-sc_threshold', '0',
-            '-f', 'rtsp', $StreamUrl)
-        Start-Sleep 4
-        if (-not (Test-StreamUp)) { Write-Error "stream setup failed"; exit 4 }
-        "up"
-    }
+if ($Probe -or (-not ($Start -or $Stop))) {
+    if (Test-StreamUp) { Write-Output "UP"; exit 0 } else { Write-Output "DOWN"; exit 1 }
 }
+
+if ($Stop) {
+    Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" |
+        Where-Object { $_.CommandLine -like "*$RtspPort*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Get-Process mediamtx -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Output "stopped"
+    exit 0
+}
+
+# -Start
+if (Test-StreamUp) { Write-Output "already up"; exit 0 }
+if (-not (Test-Path $MediaMtx)) {
+    Write-Error "mediamtx.exe not found: $MediaMtx (use -MediaMtx to specify)"
+    exit 2
+}
+Start-Process -WindowStyle Hidden $MediaMtx -WorkingDirectory (Split-Path $MediaMtx)
+Start-Sleep 3
+if (-not (Test-StreamUp)) { Write-Error "mediamtx failed to listen on port $RtspPort"; exit 3 }
+Start-Process -WindowStyle Hidden ffmpeg -ArgumentList @(
+    '-re', '-f', 'lavfi', '-i', 'testsrc2=size=640x480:rate=25',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+    '-pix_fmt', 'yuv420p', '-g', '25', '-sc_threshold', '0',
+    '-f', 'rtsp', $StreamUrl)
+Start-Sleep 4
+if (-not (Test-StreamUp)) { Write-Error "stream setup failed"; exit 4 }
+Write-Output "up"
+exit 0

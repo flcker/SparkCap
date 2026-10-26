@@ -6,6 +6,11 @@
 
 ### Added
 
+- M4b：断流重连（F10/N5 落地，11/11 全绿）——demux 线程读流失败即进入自动重连（指数退避 1s→2s→4s 封顶无限重试，stop 随时可中断），重连期间 getFrame 持续等待（应用仅感知短暂 TIMEOUT）；清空过期帧（断流时刻起旧帧失效）；S1/S2 soak 测试（杀 MediaMTX 模拟断流 → 恢复流服务 → 自动恢复取帧，N5 计时 ≤10s 达标）
+- 修复三个真实缺陷（重连测试逼出）：
+  - RTSP socket 超时选项名为 `timeout`（FFmpeg 5+ 由 stimeout 改名），误用 rw_timeout 导致服务器强杀后 TCP 挂起无界
+  - 重连的 open/close 持会话锁做网络慢操作，堵死 getFrame 等锁段——改为清队列持锁（快）、流资源操作无锁（demux 线程独占）
+  - start 的 m_stopRequested 清零在 open 之后，重启的 avformat_open_input 被残留中断标志立即掐死——移至 open 前（M4b 引入的回归，被集成测试逮出）
 - M4a：集成测试层（testing-guide §5.2 I 系落地，本机 10/10 全绿）——共享会话用例集（session_tests.h）：会话全流程含 stop 后 STREAM_LOST、close 后句柄矩阵（I9）、start/stop 重启、回调 100 帧与 IN_CALLBACK 三连守卫（I6/I7）、偏好精确生效（I11）、时间戳连续性 gaps==0（I13）；专用套件：lifecycle 误用矩阵、multidevice 双设备并发（A8）、RTSP 本地流（自动拉起/收尾 MediaMTX+ffmpeg 测试流）；demo capture.c 同步瘦身为纯示例（断言全部移交测试，AGENTS 职责判据落地）
 - **测试体系**（docs/testing-guide.md）：分层 testkit——unit（零环境依赖，CI 候选）/ integration（设备与流，缺环境自动 skip）/ soak（M4 验收专项），用例清单 U1–U14 / I1–I14 / S1–S4 直接映射 Spec 的 F/A/N；自写断言宏（零第三方依赖）+ CTest 驱动
 - **单测层落地**（5 套件全绿，0.43s）：json 解析（合法/缺失/非法/非 rtsp/转义）、FrameQueue（按序/满丢最旧/clear）、copy_frame 语义（逐字节一致/非法入参/拒绝外部指针）、错误码与像素格式枚举值 ABI 锁、三后端 pixfmt 映射完整性
@@ -40,6 +45,7 @@
 - `sparkcap_frame_t` 增加 `size` 字段（帧数据字节长度）：压缩格式（MJPG）无法从 width/height/stride 推出缓冲大小，`copy_frame` 与应用读取均需要
 - 新增 `SPARKCAP_PIXFMT_RGB24`：DShow 虚拟摄像头（YY开播/OBS 类）普遍原生输出 24 位 BGR，按 F9 保真原则原样上报
 - 修复：DShow `getFormats` 缺 `GetNumberOfCapabilities` size 检查，驱动声明 caps 超过结构大小时 `GetStreamCaps` 写穿栈（YY开播 实测崩溃 0xC0000005）
+- 测试基建：`start_test_stream.ps1` 修复（UTF-8 BOM——PS 5.1 对无 BOM 中文脚本按 GBK 误读破坏引号配对；开关式参数 -Start/-Stop/-Probe）
 - 修复：MF stop→restart 失败（同一 `IMFMediaSource` 不能重复创建 SourceReader，返回 START_FAILED）——source 生命周期与 start/stop 对称：stop 时 Shutdown，start 时按符号链接重建（Spec §4.5-2 多次交替）
 
 - 三份设计文档 v1.0 → v1.1（评审修订）：
