@@ -60,4 +60,4 @@ FFmpeg 许可合规是待确认事项（Spec §9-4）：结论出来前，禁止
 
 ## 当前状态
 
-**M1 完成**（双后端枚举/会话/能力查询/偏好）；**M2 完成**（回调模式 F5、拉取模式环形队列 N2 零跳变、抖动数据 N3）。下一里程碑 M3：FFmpeg 静态编译接入 + RTSP 后端（backend_ffmpeg，IP Camera 与本地设备同列表）；D3D11 surface 直通与 D3D11VA 硬解在 M4 统一设计 GPU 帧 ABI。N1 端到端延迟拍屏法实测留 M4 验收。
+**M1/M2/M3 完成**：三后端（MF/DShow/FFmpeg-RTSP）全链路——枚举（含 JSON 注入 IP Camera）、会话、能力查询、偏好、回调、环形队列；FFmpeg n9.0.2 静态内嵌（DLL 3.7 MB，A7/N6 达标）。下一里程碑 M4：D3D11VA 硬解 + MF surface 直通（统一 GPU 帧 ABI）+ 断流重连（F10/N5）+ 24h 稳定性（A6）+ 全项验收（含 N1 拍屏法实测）。

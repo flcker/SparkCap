@@ -17,7 +17,7 @@ Windows 摄像头统一采集库——一套 C API，三种后端：**Media Foun
 
 - [x] M1 双后端枚举 + 本地设备取帧
 - [x] M2 统一帧层（环形队列 + 回调模式）
-- [ ] M3 FFmpeg 后端 + RTSP 接入
+- [x] M3 FFmpeg 后端 + RTSP 接入
 - [ ] M4 硬解（D3D11VA）+ 断流重连 + 稳定性
 
 ## 构建

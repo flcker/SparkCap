@@ -4,13 +4,14 @@
 #pragma once
 
 #include "backend_dshow.h"
+#include "backend_ffmpeg.h"
 #include "backend_mf.h"
 
 #include <vector>
 
 namespace sparkcap {
 
-// 设备管理器：MF 优先、DShow 兜底，按符号链接去重。
+// 设备管理器：MF 优先、DShow 兜底，按符号链接去重；IP Camera 经 JSON 配置注入（F8）。
 // deviceId 在当次枚举结果内有效（每次 list 都重新枚举设备，索引重新分配）。
 class SparkCapDeviceManager {
 public:
@@ -25,7 +26,7 @@ public:
     // 按 deviceId 查设备表（open 使用）。
     const sparkcap_device_info_t* find(int deviceId) const;
 
-    // 按设备来源创建采集会话（open 的后端分发；M1b：MF，DShow 待 M1c）。
+    // 按设备来源创建采集会话（open 的后端分发）。
     int createSession(const sparkcap_device_info_t& info, ICaptureSession** out);
 
     // 能力查询（F11，两段式，语义同 enumerate）。
@@ -36,6 +37,7 @@ private:
     std::vector<sparkcap_device_info_t> m_deviceTable;
     MfBackend    m_mfBackend;
     DshowBackend m_dshowBackend;
+    FfmpegBackend m_ffmpegBackend;
 };
 
 } // namespace sparkcap

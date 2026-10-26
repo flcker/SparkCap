@@ -2,6 +2,8 @@
 
 #include "device_manager.h"
 
+#include "json_config.h"
+
 #include <string.h>
 
 #include <string>
@@ -37,6 +39,10 @@ int SparkCapDeviceManager::refreshDevices()
     const int dsRc = m_dshowBackend.enumerateDevices(devices); // DShow 追加
     if (mfRc != SPARKCAP_ERR_OK && dsRc != SPARKCAP_ERR_OK)
         return mfRc;
+
+    // IP Camera 经 JSON 配置注入（F8：与系统设备合并进同一列表）
+    for (auto& cam : loadJsonCameras())
+        devices.push_back(cam);
 
     // 按设备实例去重（MF 条目优先保留）；无 path 的条目不参与去重。
     std::vector<sparkcap_device_info_t> merged;
@@ -108,6 +114,8 @@ int SparkCapDeviceManager::createSession(const sparkcap_device_info_t& info, ICa
         return m_mfBackend.createSession(info, out);
     case SPARKCAP_BACKEND_DSHOW:
         return m_dshowBackend.createSession(info, out);
+    case SPARKCAP_BACKEND_FFMPEG:
+        return m_ffmpegBackend.createSession(info, out);
     default:
         return SPARKCAP_ERR_UNSUPPORTED;
     }
@@ -130,7 +138,9 @@ int SparkCapDeviceManager::getFormats(int deviceId, sparkcap_device_format_t* fo
         ? m_mfBackend.getFormats(*info, fmts)
         : (info->backend == SPARKCAP_BACKEND_DSHOW)
             ? m_dshowBackend.getFormats(*info, fmts)
-            : SPARKCAP_ERR_UNSUPPORTED;
+            : (info->backend == SPARKCAP_BACKEND_FFMPEG)
+                ? m_ffmpegBackend.getFormats(*info, fmts)
+                : SPARKCAP_ERR_UNSUPPORTED;
     if (rc != SPARKCAP_ERR_OK) {
         *inOutCount = 0;
         return rc;

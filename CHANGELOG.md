@@ -6,6 +6,12 @@
 
 ### Added
 
+- M3：FFmpeg 后端 + RTSP 接入（里程碑达成）——
+  - FFmpeg n9.0.2 静态裁剪编译（MSVC v14.44，Release /MT 与 Debug /MTd 双份；构建固化为 `third_party/ffmpeg/build_ffmpeg.sh`，产物 41 MB 静态库链入后 DLL 仅增量 2.6 MB，总 3.7 MB，N6 达标；dumpbin 实测导出 0 个 av* 符号、依赖纯系统库，A7 达标）
+  - `src/backend_ffmpeg.cpp`：`FfmpegSession`——库内部采集线程（demux → 解码 → planar 帧重排连续布局入环形队列），interrupt_callback 中断阻塞 IO（stop 即时收束），IO 静默（av_log QUIET），analyzeduration 10s 容忍重连等 IDR
+  - `src/json_config.cpp`（F8）：零依赖极简 JSON 解析，`sparkcap.json`（工作目录）的 ip_cameras 与系统设备合并进同一列表
+  - CMake：FFmpeg SYSTEM include + `/external:W0`（第三方头不受 /W4 /WX 管辖）；按 `$<CONFIG>` 选库；系统依赖 ws2_32/crypt32/secur32/ncrypt/bcrypt
+  - 实测（MediaMTX + ffmpeg testsrc2 25fps 本地流）：640×480 I420 stride=640 size=460800 正确、拉取 50 帧 median=40000us gaps=0（N2）、回调 200 帧 + IN_CALLBACK=11、stop→restart 恢复、MF/DShow 回归全绿
 - `docs/SparkCap-编译环境安装指南.md`：新机器从零搭建编译环境——VS2022 安装与工具集验证、MSYS2 安装与 pacman 首次更新（含清华镜像）与命令速查（参数含义/常用命令/部分升级警告）、构建工具安装（make/diffutils/nasm/yasm 及各自用途）、`msys2_shell.cmd -use-full-path` 就绪检查、常见安装问题
 - `docs/SparkCap-FFmpeg编译指南.md`：源码锁定（n9.0.2）、MSVC v14.44 静态裁剪编译全流程（Release /MT + Debug /MTd 双份）、configure 参数逐条说明、产物入库布局（成品 lib/include 入库，src/install 忽略）、dumpbin 验证与常见问题；环境部分引用安装指南
 - M2b（M2 收口）：拉取模式环形队列（`src/frame_queue.h` 模板，技术选型 §4 统一帧输出层）——8 槽环形缓冲：满丢最旧（保最新）、按序消费不丢帧（N2）、空时事件唤醒；MF 槽持 Lock 的 buffer 引用（移动语义转移 Unlock 义务），DShow 槽持拷贝缓冲（vector 移动保指针稳定）；getFrame 改两段式（先非阻塞取、空则等事件）；stop 唤醒等待者；实测 MF 50 帧时间戳零跳变（gaps=0，N2 ✓）

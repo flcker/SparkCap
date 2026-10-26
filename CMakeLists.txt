@@ -21,8 +21,10 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 add_library(sparkcap SHARED
     src/facade.cpp
     src/device_manager.cpp
+    src/json_config.cpp
     src/backend_mf.cpp
     src/backend_dshow.cpp
+    src/backend_ffmpeg.cpp
 )
 
 target_include_directories(sparkcap
@@ -31,8 +33,20 @@ target_include_directories(sparkcap
         $<INSTALL_INTERFACE:include>
 )
 
+# FFmpeg 头为外部代码：SYSTEM + /external:W0 不受 /W4 /WX 管辖
+target_include_directories(sparkcap SYSTEM PRIVATE third_party/ffmpeg/include)
+
 # COM/MF/DShow 系统库：ole32+oleaut32（COM）、mfplat+mf+mfuuid+mfreadwrite（MF）、strmiids（DShow）
 target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid mfreadwrite strmiids)
+
+# FFmpeg 静态库（M3：libav* 头仅在 backend_ffmpeg.cpp 内部，符号经 .def 隔离）
+# 系统依赖：ws2_32（socket）、crypt32+secur32（schannel TLS）、bcrypt（随机数）
+set(FFMPEG_LIB_DIR ${CMAKE_SOURCE_DIR}/third_party/ffmpeg/lib/$<CONFIG>)
+target_link_libraries(sparkcap PRIVATE
+    ${FFMPEG_LIB_DIR}/avformat.lib
+    ${FFMPEG_LIB_DIR}/avcodec.lib
+    ${FFMPEG_LIB_DIR}/avutil.lib
+    ws2_32 crypt32 secur32 bcrypt ncrypt)
 
 target_compile_features(sparkcap PRIVATE cxx_std_20)
 
@@ -51,7 +65,8 @@ target_link_options(sparkcap PRIVATE
 set_target_properties(sparkcap PROPERTIES DEBUG_POSTFIX "d")
 
 # 警告等级；/utf-8：源码与执行字符集均为 UTF-8（源文件含中文注释）
-target_compile_options(sparkcap PRIVATE /W4 /WX /utf-8)
+# /external:W0：第三方（FFmpeg）头警告关闭
+target_compile_options(sparkcap PRIVATE /W4 /WX /utf-8 /external:W0)
 
 # ---- Demo（examples/）----
 add_executable(list_devices examples/list_devices.c)

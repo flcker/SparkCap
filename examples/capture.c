@@ -46,6 +46,8 @@ int main(int argc, char** argv)
     sparkcap_backend_kind_t want = SPARKCAP_BACKEND_MF;
     if (argc > 1 && strcmp(argv[1], "dshow") == 0)
         want = SPARKCAP_BACKEND_DSHOW;
+    else if (argc > 1 && strcmp(argv[1], "ffmpeg") == 0)
+        want = SPARKCAP_BACKEND_FFMPEG;  /* IP Camera（sparkcap.json 配置，F8） */
     int wantW = 0;
     int wantH = 0;
     if (argc > 2)
@@ -80,7 +82,8 @@ int main(int argc, char** argv)
             target = devs[i].id;
     }
     if (target < 0) {
-        printf("no %s device found\n", want == SPARKCAP_BACKEND_MF ? "MF" : "DShow");
+        printf("no %s device found\n", want == SPARKCAP_BACKEND_MF ? "MF"
+                : want == SPARKCAP_BACKEND_DSHOW ? "DShow" : "FFmpeg");
         free(devs);
         sparkcap_destroy_backend(backend);
         return 1;
@@ -162,8 +165,13 @@ int main(int argc, char** argv)
     g_cbCount = 0;
     g_cbStopRc = 0;
     rc = sparkcap_set_frame_callback(dev, onFrame, NULL);
-    if (rc == SPARKCAP_ERR_OK)
+    if (rc == SPARKCAP_ERR_OK) {
         rc = sparkcap_start(dev, wantW, wantH, SPARKCAP_PIXFMT_UNKNOWN, 0);
+        if (rc != SPARKCAP_ERR_OK)
+            printf("restart start rc=%d\n", rc);
+    } else {
+        printf("restart set_callback rc=%d\n", rc);
+    }
     if (rc != SPARKCAP_ERR_OK) {
         printf("callback setup failed: %d\n", rc);
     } else {

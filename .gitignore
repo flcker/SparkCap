@@ -21,6 +21,12 @@ cmake_install.cmake
 *.pdb
 *.ilk
 
+# FFmpeg 成品库例外（入库共享，见 docs/SparkCap-FFmpeg编译指南.md §6）
+!third_party/ffmpeg/lib/**
+
 # third_party：源码树与临时安装不入库；成品 include/ 与 lib/ 入库（见 docs/SparkCap-FFmpeg编译指南.md §6）
 third_party/ffmpeg/src/
 third_party/ffmpeg/install/
+
+# 本地测试配置（IP Camera 列表按环境自建，F8）
+/sparkcap.json

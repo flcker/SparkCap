@@ -29,74 +29,51 @@
 
 ## 3. 获取源码（锁定 tag）
 
+**方式一（推荐）：官方 release tarball**——一次下载约 11 MB，无 git 历史：
+
     cd D:\workspaces\github\SparkCap\third_party\ffmpeg
-    git clone https://github.com/FFmpeg/FFmpeg.git src
-    cd src
-    git checkout n9.0.2        # 锁定稳定分支最新补丁 tag（2026-10 时为 9.0.2 "Lei"）
+    curl -L -o ffmpeg-9.0.2.tar.xz https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+    tar -xJf ffmpeg-9.0.2.tar.xz && ren ffmpeg-9.0.2 src
 
-记录 commit hash（写入 VERSION）：
+**方式二：git clone**（GitHub 直连慢时可弃用）：
 
-    git rev-parse HEAD
+    git clone --branch n9.0.2 --depth 1 https://github.com/FFmpeg/FFmpeg.git src
+
+tag 以锁定时稳定分支最新补丁为准（2026-10 为 9.0.2 "Lei"）。
 
 ## 4. 编译步骤
 
-### 4.1 进入带 VS 环境的 MSYS2 shell
+构建已固化为 `third_party/ffmpeg/build_ffmpeg.sh`（configure 全参数见 §5），两份配置（Release /MT 与 Debug /MTd）各跑一次。
 
-`configure --toolchain=msvc` 需要 `cl` 在 PATH 中。标准做法：**在 VS 的 x64 命令行里启动 MSYS2 并继承完整 PATH**：
+### 4.1 一行命令（无头/CI，推荐）
 
-1. 开始菜单打开 **"x64 Native Tools Command Prompt for VS 2022"**
-2. 执行：
+在任意终端：
 
-       C:\msys64\msys2_shell.cmd -use-full-path
+    cmd /c '"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul && C:\msys64\msys2_shell.cmd -defterm -no-start -use-full-path /d/workspaces/github/SparkCap/third_party/ffmpeg/build_ffmpeg.sh Release'
 
-`-use-full-path` 使 MSYS 继承 vcvars64 设置的 PATH/INCLUDE/LIB，`cl.exe` 直接可用。
+三个 msys2_shell 参数缺一不可（实测踩坑）：
 
-### 4.2 configure（Release，/MT）
+| 参数 | 作用 |
+|---|---|
+| `-defterm` | 绕过 mintty 直接跑 bash——**否则无输出**（mintty 是 GUI 终端，吞掉管道） |
+| `-no-start` | 不用 start（同步执行并返回退出码） |
+| `-use-full-path` | 继承 vcvars 的完整 PATH（cl 可见；缺它 bash 的 profile 会丢弃 VS 路径） |
 
-在上述 MSYS shell 中：
+> 交互调试可用两参数版：`msys2_shell.cmd -use-full-path`（mintty 窗口）。
 
-    cd /d/workspaces/github/SparkCap/third_party/ffmpeg/src
+### 4.2 产物与耗时
 
-    ./configure \
-      --toolchain=msvc \
-      --target-os=win32 \
-      --arch=x86_64 \
-      --enable-static \
-      --disable-shared \
-      --disable-programs \
-      --disable-doc \
-      --disable-avdevice \
-      --disable-avfilter \
-      --disable-swscale \
-      --disable-swresample \
-      --disable-everything \
-      --enable-network \
-      --enable-protocol=rtsp,rtp,tcp,udp \
-      --enable-demuxer=rtsp,h264,hevc \
-      --enable-parser=h264,hevc \
-      --enable-decoder=h264,hevc \
-      --enable-hwaccel=h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2 \
-      --extra-cflags="-MT" \
-      --prefix=/d/workspaces/github/SparkCap/third_party/ffmpeg/install/Release
+每次约 3–5 分钟。产物在 `install/<Config>/`：`include/` 与 `lib/`（avcodec/avformat/avutil 三个 .lib，合计约 41 MB；链入 DLL 后经 /OPT:REF 裁剪仅增量约 2.6 MB，N6 达标）。
 
-### 4.3 编译并安装
+### 4.3 主工程链接（已完成，备忘）
 
-    make -j8
-    make install
+CMake 已接好（`CMakeLists.txt`）：FFmpeg 头按 SYSTEM include + `/external:W0`（第三方警告不归 /W4 /WX 管）；按 `$<CONFIG>` 选 `lib/Release|Debug`。FFmpeg 静态库的 **Windows 系统依赖**须一并链接：
 
-产物在 `install/Release/`：`include/`（三个库的头）与 `lib/`（`avcodec.lib`、`avformat.lib`、`avutil.lib`）。
-
-### 4.4 Debug 版（/MTd，可选但推荐）
-
-重开一个干净的 MSYS shell（或在另一份源码目录），仅改变两处：
-
-    ./configure ...（同 4.2，改两处） \
-      --extra-cflags="-MTd" \
-      --prefix=/d/workspaces/github/SparkCap/third_party/ffmpeg/install/Debug
-
-    make -j8 && make install
-
-> 说明：主工程 Debug（/MTd）链 /MT 编译的 FFmpeg 通常能链接成功（UCRT 符号兼容），但属未定义行为的灰区——编两份最严谨。若接受调试期不严格，可只编 /MT 一份，主工程 Debug 也用它。
+| 系统库 | 用途 |
+|---|---|
+| ws2_32 | socket（RTSP/RTP 网络） |
+| crypt32 / secur32 / ncrypt | schannel TLS（rtsp over TLS 路径被无条件拉入） |
+| bcrypt | avutil 随机数 |
 
 ## 5. configure 参数说明
 
@@ -146,9 +123,13 @@
 | 现象 | 处置 |
 |---|---|
 | `cl is unable to create an executable file` | 未继承 VS 环境：确认在 x64 Native Tools 命令行里用 `-use-full-path` 启动 MSYS2 |
+| msys2_shell 跑脚本**无任何输出** | 加 `-defterm`（mintty 吞掉管道输出，见 §4.1） |
 | `nasm/yasm is missing` | `pacman -S nasm yasm` |
 | `--enable-hwaccel=... unknown option` | 新版 FFmpeg 已把 d3d11va 并入 decoder（`--enable-decoder=h264,hevc` 即含）：去掉该行重试 |
+| GitHub clone 慢/卡死 | 用 §3 方式一 tarball；GitHub release 资产可经 `api.github.com/repos/<owner>/<repo>/releases/assets/<id>`（`Accept: application/octet-stream`）下载 |
 | 链接期 unresolved external（`___security_cookie` 等） | MSYS 未继承 VS 的 LIB：同"cl unable"处置 |
+| 链接期 `__imp_CertStrToNameA`/`BCryptGenRandom` 等缺失 | FFmpeg 的系统依赖没链全：见 §4.3 系统库表 |
+| libav 函数链接报 C++ 修饰名 | libavutil 子头（time.h/opt.h 等）单独 include 无 extern "C" 保护：全部 libav include 包进 `extern "C" {}`（backend_ffmpeg.cpp 已如此） |
 | 想改裁剪范围 | 先 `make distclean` 再重新 configure |
 
 ## 9. 版本升级流程
