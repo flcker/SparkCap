@@ -12,6 +12,7 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 | docs/environment-setup.md | 新机器环境搭建（VS2022/MSYS2/工具，M3） |
 | docs/building-ffmpeg.md | FFmpeg 静态裁剪编译全流程（M3） |
 | docs/testing-guide.md | 测试分层、用例清单（U/I/S 系）、M4 验收映射 |
+| docs/integration-guide.md | 接入方实务指南：帧处理/get_formats 两段式/设备排查 |
 
 **规则：改对外接口、错误码或语义时，先改 Spec 再改代码，保持两者一致；显著变更记入 [CHANGELOG.md](CHANGELOG.md) 的 Unreleased 段。**
 
@@ -66,4 +67,4 @@ FFmpeg 许可合规是待确认事项（Spec §9-4）：结论出来前，禁止
 
 ## 当前状态
 
-**M1–M4 全部完成**（功能与工程基座齐备，12/12 测试全绿）。三项验收待外部条件实测（工具就绪）：A1 插 USB 摄像头即验、A5/N1 拍屏法（flash_screen + measure_latency，见 testing-guide §5.3）、A6/N4 24h 长跑（soak_24h 1440，夜间执行）。Spec §9 待确认事项仍开放：音频采集、PTZ(ONVIF)、x86、许可合规结论。
+**M1–M4 全部完成**（功能与工程基座齐备，12/12 测试全绿）。后续演进：错误回调 + 日志回调 API 已落地（Spec §4.5，导出 15 符号）；设备热插拔事件（Spec §9-5）待立项。三项验收待外部条件实测（工具就绪）：A1 插 USB 摄像头即验、A5/N1 拍屏法（flash_screen + measure_latency，见 testing-guide §5.3）、A6/N4 24h 长跑（soak_24h 1440，夜间执行）。Spec §9 其余待确认事项：音频采集、PTZ(ONVIF)、x86。许可已定 LGPL-3.0（法务终审待完成）。

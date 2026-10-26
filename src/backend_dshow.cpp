@@ -171,6 +171,8 @@ public:
     // ICaptureSession
     int start(int width, int height, sparkcap_pixfmt_t fmt, int fps) override;
     int setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata) override;
+    int setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                         void* userdata) override;
     int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) override;
     int stop() override;
 
@@ -200,6 +202,10 @@ private:
     sparkcap_device_t* m_callbackDevice = nullptr;  // 弱引用（生命周期 ⊂ device）
     sparkcap_frame_cb  m_frameCallback = nullptr;
     void*              m_callbackUserdata = nullptr;
+
+    sparkcap_device_t* m_errorDevice = nullptr;    // 错误回调（Spec §4.5）
+    sparkcap_error_cb  m_errorCallback = nullptr;
+    void*              m_errorUserdata = nullptr;
 };
 
 DshowSession::DshowSession(Microsoft::WRL::ComPtr<IBaseFilter> sourceFilter)
@@ -259,6 +265,18 @@ int DshowSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, v
     m_callbackDevice = device;
     m_frameCallback = cb;
     m_callbackUserdata = userdata;
+    return SPARKCAP_ERR_OK;
+}
+
+int DshowSession::setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                                   void* userdata)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_running.load())
+        return SPARKCAP_ERR_UNSUPPORTED;
+    m_errorDevice = device;
+    m_errorCallback = cb;
+    m_errorUserdata = userdata;
     return SPARKCAP_ERR_OK;
 }
 

@@ -6,6 +6,10 @@
 
 ### Added
 
+- **错误回调 API** `sparkcap_set_error_callback`（Spec §4.5）：流断开时通知回调模式应用（此前回调模式对流断完全无感知）；不发送恢复信号（帧回调恢复交付即恢复，Spec 决策）；MF 在 OnSample 失败/EOS 触发、FFmpeg 在断流确认（reconnect 前）触发；锁外调用 + CallbackGuard 守卫 + 异常吞掉
+- **日志回调 API** `sparkcap_set_log_callback`（Spec §4.5）：进程级全局路由，FFmpeg av_log（WARN+）经桥接转发到应用回调（含级别映射 INFO/WARN/ERROR + 后端标识），未注册时库静默；任意时机可注册/取消
+- 导出符号 13→15（.def 白名单更新）
+- `docs/integration-guide.md` 接入指南（来自 SparkCapDemo 下游实战）：接入三步、stride/格式内存布局表、帧有效期陷阱、**get_formats 两段式正确用法（附数组越界反例）**、设备排查（协商成功≠出数据的 J.ZAO 实测案例、逐格式探针法、USB 带宽表）、错误码速查
 - **许可落地**：LGPL-3.0（LICENSE + COPYING/GPL-3.0 基底），依赖声明 THIRD-PARTY-NOTICES.md（FFmpeg LGPL-2.1+ 全文入 third_party/ffmpeg/LICENSE，纯 LGPL 构建路径声明，替换/重链途径说明），README 与 spec §9 同步
 - **工程规范化**：.gitattributes 换行策略（sh=LF、ps1/bat=CRLF、二进制标记），根治三次踩坑的行尾问题
 - M4d（M4 收口）：长稳与延迟测量基建，全套 12/12 全绿——

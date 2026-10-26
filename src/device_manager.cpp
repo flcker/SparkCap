@@ -4,6 +4,8 @@
 
 #include "json_config.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <string>
@@ -30,6 +32,25 @@ std::string instanceKey(const char* path)
 } // namespace
 
 thread_local bool g_inFrameCallback = false;
+
+LogRoute g_logRoute = {};
+
+// 日志输出（Spec §4.5）：有回调则路由，无则丢弃（库不向 stderr 打印）
+void sparkcapLog(sparkcap_log_level_t level, const char* backend, const char* fmt, ...)
+{
+    const sparkcap_log_cb cb = g_logRoute.cb;
+    if (cb == nullptr)
+        return;
+    char text[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(text, sizeof(text), fmt, args);
+    va_end(args);
+    try {
+        cb(nullptr, level, backend, text, g_logRoute.userdata);
+    } catch (...) {
+    }
+}
 
 int SparkCapDeviceManager::refreshDevices()
 {

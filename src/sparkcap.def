@@ -8,6 +8,8 @@ EXPORTS
     sparkcap_create_backend
     sparkcap_open
     sparkcap_set_frame_callback
+    sparkcap_set_error_callback
+    sparkcap_set_log_callback
     sparkcap_start
     sparkcap_get_frame
     sparkcap_copy_frame

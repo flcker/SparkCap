@@ -27,6 +27,22 @@ extern "C" {
 namespace sparkcap {
 namespace {
 
+// FFmpeg av_log → sparkcapLog 桥（Spec §4.5 日志回调路由）
+void avLogBridge(void* avcl, int level, const char* fmt, va_list vl)
+{
+    (void)avcl;
+    if (g_logRoute.cb == nullptr)
+        return;
+    sparkcap_log_level_t lv = SPARKCAP_LOG_INFO;
+    if (level <= AV_LOG_ERROR)
+        lv = SPARKCAP_LOG_ERROR;
+    else if (level <= AV_LOG_WARNING)
+        lv = SPARKCAP_LOG_WARN;
+    char text[1024];
+    vsnprintf(text, sizeof(text), fmt, vl);
+    sparkcapLog(lv, "ffmpeg", "%s", text);
+}
+
 // 队列槽：planar 帧重排为连续布局后的拷贝（解码器缓冲会被复用，必须拷贝）
 struct FsQueueSlot {
     std::vector<BYTE> data;
@@ -46,6 +62,8 @@ public:
     // ICaptureSession
     int start(int width, int height, sparkcap_pixfmt_t fmt, int fps) override;
     int setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata) override;
+    int setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                         void* userdata) override;
     int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) override;
     int stop() override;
 
@@ -85,6 +103,10 @@ private:
     sparkcap_device_t* m_callbackDevice = nullptr;
     sparkcap_frame_cb  m_frameCallback = nullptr;
     void*              m_callbackUserdata = nullptr;
+
+    sparkcap_device_t* m_errorDevice = nullptr;    // 错误回调（Spec §4.5）
+    sparkcap_error_cb  m_errorCallback = nullptr;
+    void*              m_errorUserdata = nullptr;
 };
 
 FfmpegSession::FfmpegSession(std::string url, std::string transport)
@@ -212,6 +234,25 @@ void FfmpegSession::demuxMain()
             av_packet_unref(m_pkt);
             if (m_stopRequested.load())
                 break;  // stop 引起的中断
+
+            // 错误回调（Spec §4.5）：断流通知（锁外调用）
+            sparkcap_error_cb errCb = nullptr;
+            sparkcap_device_t* errDev = nullptr;
+            void* errData = nullptr;
+            {
+                std::lock_guard<std::mutex> lk(m_mutex);
+                errCb = m_errorCallback;
+                errDev = m_errorDevice;
+                errData = m_errorUserdata;
+            }
+            if (errCb != nullptr) {
+                CallbackGuard guard;
+                try {
+                    errCb(errDev, SPARKCAP_ERR_STREAM_LOST, errData);
+                } catch (...) {
+                }
+            }
+
             if (!reconnect())  // F10：断流自动重连（stop 中断时返回 false）
                 break;
             continue;
@@ -412,6 +453,18 @@ int FfmpegSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, 
     return SPARKCAP_ERR_OK;
 }
 
+int FfmpegSession::setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                                    void* userdata)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_running.load())
+        return SPARKCAP_ERR_UNSUPPORTED;
+    m_errorDevice = device;
+    m_errorCallback = cb;
+    m_errorUserdata = userdata;
+    return SPARKCAP_ERR_OK;
+}
+
 int FfmpegSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
 {
     if (!m_running.load())
@@ -485,7 +538,8 @@ int FfmpegBackend::createSession(const sparkcap_device_info_t& info, ICaptureSes
     // transport 暂用默认（tcp）；JSON 的 transport 字段随 F8 细化接线
     try {
         avformat_network_init();  // 幂等初始化网络层
-        av_log_set_level(AV_LOG_QUIET);  // 库不向 stderr 打日志（日志回调随 M4 接入）
+        av_log_set_callback(avLogBridge);  // 日志路由到应用回调（未注册时静默）
+        av_log_set_level(AV_LOG_WARNING);
         *out = new FfmpegSession(info.path, "tcp");
         return SPARKCAP_ERR_OK;
     } catch (const std::bad_alloc&) {

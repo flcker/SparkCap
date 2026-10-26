@@ -137,6 +137,8 @@ public:
     // ICaptureSession
     int start(int width, int height, sparkcap_pixfmt_t fmt, int fps) override;
     int setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata) override;
+    int setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                         void* userdata) override;
     int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) override;
     int stop() override;
 
@@ -169,6 +171,10 @@ private:
     sparkcap_device_t* m_callbackDevice = nullptr;  // 弱引用（生命周期 ⊂ device）
     sparkcap_frame_cb  m_frameCallback = nullptr;
     void*              m_callbackUserdata = nullptr;
+
+    sparkcap_device_t* m_errorDevice = nullptr;    // 错误回调（Spec §4.5）
+    sparkcap_error_cb  m_errorCallback = nullptr;
+    void*              m_errorUserdata = nullptr;
 };
 
 MfSession::MfSession(const char* path, Microsoft::WRL::ComPtr<IMFMediaSource> source)
@@ -249,6 +255,18 @@ int MfSession::setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void
     return SPARKCAP_ERR_OK;
 }
 
+int MfSession::setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                                void* userdata)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if (m_running.load())
+        return SPARKCAP_ERR_UNSUPPORTED;
+    m_errorDevice = device;
+    m_errorCallback = cb;
+    m_errorUserdata = userdata;
+    return SPARKCAP_ERR_OK;
+}
+
 // 队列非空则按序弹出（consumed 的移动赋值自动释放上一帧 → Spec §4.3 有效期语义）
 bool MfSession::popFrameLocked(sparkcap_frame_t* outFrame)
 {
@@ -325,9 +343,24 @@ HRESULT MfSession::onSample(HRESULT hrStatus, DWORD streamFlags, LONGLONG timest
                             IMFSample* sample)
 {
     if (FAILED(hrStatus) || (streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) != 0) {
-        std::lock_guard<std::mutex> lk(m_mutex);
-        m_streamFailed = true;
-        SetEvent(m_frameEvent);
+        sparkcap_error_cb errCb = nullptr;
+        sparkcap_device_t* errDev = nullptr;
+        void* errData = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            m_streamFailed = true;
+            SetEvent(m_frameEvent);
+            errCb = m_errorCallback;   // 拷贝到锁外调用
+            errDev = m_errorDevice;
+            errData = m_errorUserdata;
+        }
+        if (errCb != nullptr) {
+            CallbackGuard guard;
+            try {
+                errCb(errDev, SPARKCAP_ERR_STREAM_LOST, errData);
+            } catch (...) {
+            }
+        }
         return S_OK;
     }
 

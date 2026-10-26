@@ -212,6 +212,33 @@ int sparkcap_set_frame_callback(sparkcap_device_t* device, sparkcap_frame_cb cb,
     }
 }
 
+int sparkcap_set_error_callback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                                void* userdata)
+{
+    if (device == nullptr || cb == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;
+    if (!validDevice(device->owner, device))
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->session->setErrorCallback(device, cb, userdata);
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_set_log_callback(sparkcap_device_t* device, sparkcap_log_cb cb, void* userdata)
+{
+    // 日志回调为进程级全局路由（Spec §4.5）：FFmpeg av_log 等为进程级源，
+    // 全局路由与其匹配。device 参数仅用于校验（可为 NULL）。
+    if (device != nullptr && !validDevice(device->owner, device))
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    sparkcap::g_logRoute.cb = cb;
+    sparkcap::g_logRoute.userdata = userdata;
+    return SPARKCAP_ERR_OK;
+}
+
 int sparkcap_start(sparkcap_device_t* device, int width, int height,
                    sparkcap_pixfmt_t fmt, int fps)
 {

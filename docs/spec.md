@@ -47,6 +47,8 @@
 | sparkcap_create_backend | 创建后端实例 |
 | sparkcap_open | 打开设备 |
 | sparkcap_set_frame_callback | 注册帧回调（回调模式入口，须在 start 前） |
+| sparkcap_set_error_callback | 注册错误回调（流断开通知，须在 start 前） |
+| sparkcap_set_log_callback | 注册日志回调（诊断输出，任意时机） |
 | sparkcap_start | 启动采集 |
 | sparkcap_get_frame | 拉取一帧 |
 | sparkcap_copy_frame | 深拷贝一帧 |
@@ -89,6 +91,25 @@
 4. 回调执行期间其他线程调用 stop 有效：stop 等待在途回调返回后才完成，此后不再产生新回调；
 5. 禁止在回调内调用 stop/close，返回 SPARKCAP_ERR_IN_CALLBACK；copy_frame 可在回调内调用，用于跨线程持有。
 
+### 4.5 回调约定
+
+**帧回调**（sparkcap_frame_cb）：交付帧数据，帧仅回调期间有效。
+
+**错误回调**（sparkcap_error_cb）：流断开时通知（error_code = SPARKCAP_ERR_STREAM_LOST）。
+不发送"恢复"信号——重连成功后帧回调恢复交付，应用据此推断恢复。
+
+**日志回调**（sparkcap_log_cb）：诊断信息输出。注册后库内部日志（含 FFmpeg av_log）
+路由到该回调；未注册时库静默。
+
+通用规则（适用于全部三种回调）：
+
+1. 在采集线程或库内部线程执行，须快速返回；
+2. 禁止在回调内调用 stop/close（返回 SPARKCAP_ERR_IN_CALLBACK）；
+3. 回调内抛出的异常被库吞掉，不中断采集；
+4. 错误/日志回调可在 start 前后任意时机注册或取消（传 NULL 取消）。
+
+### 4.6 调用顺序
+
 ### 4.5 调用顺序
 
 单个设备的合法调用序列：
@@ -104,7 +125,8 @@
       → sparkcap_close
       → sparkcap_destroy_backend
 
-1. set_frame_callback 须在 start 前注册，start 后注册返回 SPARKCAP_ERR_UNSUPPORTED；
+1. set_frame_callback / set_error_callback 须在 start 前注册，start 后注册返回 SPARKCAP_ERR_UNSUPPORTED；set_log_callback 任意时机可注册；
+2. 错误回调仅通知流断开（STREAM_LOST），不通知恢复——恢复由帧回调恢复交付隐式推断。
 2. start/stop 可在同一设备上多次交替；stop 后 get_frame 返回 SPARKCAP_ERR_STREAM_LOST；
 3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；
 4. 合法序列之外的调用返回相应错误码，不产生未定义行为、不崩溃。

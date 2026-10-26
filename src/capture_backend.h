@@ -38,6 +38,10 @@ public:
     //（stop 等待在途回调返回后才完成，回调期间 device 不会析构）。
     virtual int setCallback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata) = 0;
 
+    // 注册错误回调（Spec §4.5）：流断开时通知。须在 start 前。
+    virtual int setErrorCallback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                                 void* userdata) = 0;
+
     // 将当前帧填入 *outFrame；outFrame->data 指向会话内部缓冲，
     // 在下一次 getFrame 或 stop 前有效（Spec §4.3 拉取模式语义）。
     virtual int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) = 0;
@@ -48,6 +52,15 @@ public:
 // 回调上下文守卫（Spec §4.4-5：回调内调用 stop/close 返回 SPARKCAP_ERR_IN_CALLBACK）。
 // 定义在 device_manager.cpp。
 extern thread_local bool g_inFrameCallback;
+
+// 全局日志路由（Spec §4.5）：FFmpeg av_log 等进程级日志源经此转发到应用回调。
+// 定义在 device_manager.cpp。
+struct LogRoute {
+    sparkcap_log_cb cb = nullptr;
+    void* userdata = nullptr;
+};
+extern LogRoute g_logRoute;
+void sparkcapLog(sparkcap_log_level_t level, const char* backend, const char* fmt, ...);
 
 struct CallbackGuard {
     CallbackGuard() : m_old(g_inFrameCallback) { g_inFrameCallback = true; }
