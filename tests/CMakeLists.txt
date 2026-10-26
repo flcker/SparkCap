@@ -38,3 +38,21 @@ target_link_libraries(test_unit_pixfmt PRIVATE strmiids mfuuid)  # MEDIASUBTYPE_
 target_compile_options(test_unit_pixfmt PRIVATE /W4 /WX /utf-8 /external:W0)
 add_test(NAME unit_pixfmt COMMAND test_unit_pixfmt)
 set_tests_properties(unit_pixfmt PROPERTIES LABELS "unit")
+
+# ---- integration（需设备或流；从仓库根运行以解析 tools/ 与 sparkcap.json）----
+function(sparkcap_integration_test name)
+    add_executable(test_int_${name} integration/test_${name}.cpp)
+    target_link_libraries(test_int_${name} PRIVATE sparkcap)
+    target_compile_features(test_int_${name} PRIVATE cxx_std_20)
+    target_compile_options(test_int_${name} PRIVATE /W4 /WX /utf-8)
+    add_test(NAME integration_${name}
+             COMMAND $<TARGET_FILE:test_int_${name}>
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(integration_${name} PROPERTIES LABELS "integration")
+endfunction()
+
+sparkcap_integration_test(lifecycle)
+sparkcap_integration_test(mf)
+sparkcap_integration_test(dshow)
+sparkcap_integration_test(multidevice)
+sparkcap_integration_test(rtsp)

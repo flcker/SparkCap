@@ -69,6 +69,21 @@ inline bool testNot(T v)
         }                                                                    \
     } while (0)
 
+// 带参用例（集成测试共享函数集用）
+#define RUN_CASE_PTR(fn, ...)                                                \
+    do {                                                                     \
+        g_caseFailures = 0;                                                  \
+        g_caseName = #fn;                                                    \
+        fn(__VA_ARGS__);                                                     \
+        if (g_caseFailures == 0)                                             \
+            std::printf("  [PASS] %s\n", #fn);                               \
+        else {                                                               \
+            std::printf("  [FAIL] %s (%d checks failed)\n", #fn,             \
+                        g_caseFailures);                                     \
+            ++g_totalFailures;                                               \
+        }                                                                    \
+    } while (0)
+
 #define TEST_MAIN_END()                                                      \
     do {                                                                     \
         std::printf("%s: %d checks, %d failed case(s)\n", g_suiteName,       \

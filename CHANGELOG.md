@@ -6,7 +6,8 @@
 
 ### Added
 
-- **测试体系**（docs/SparkCap-测试计划.md）：分层 testkit——unit（零环境依赖，CI 候选）/ integration（设备与流，缺环境自动 skip）/ soak（M4 验收专项），用例清单 U1–U14 / I1–I14 / S1–S4 直接映射 Spec 的 F/A/N；自写断言宏（零第三方依赖）+ CTest 驱动
+- M4a：集成测试层（testing-guide §5.2 I 系落地，本机 10/10 全绿）——共享会话用例集（session_tests.h）：会话全流程含 stop 后 STREAM_LOST、close 后句柄矩阵（I9）、start/stop 重启、回调 100 帧与 IN_CALLBACK 三连守卫（I6/I7）、偏好精确生效（I11）、时间戳连续性 gaps==0（I13）；专用套件：lifecycle 误用矩阵、multidevice 双设备并发（A8）、RTSP 本地流（自动拉起/收尾 MediaMTX+ffmpeg 测试流）；demo capture.c 同步瘦身为纯示例（断言全部移交测试，AGENTS 职责判据落地）
+- **测试体系**（docs/testing-guide.md）：分层 testkit——unit（零环境依赖，CI 候选）/ integration（设备与流，缺环境自动 skip）/ soak（M4 验收专项），用例清单 U1–U14 / I1–I14 / S1–S4 直接映射 Spec 的 F/A/N；自写断言宏（零第三方依赖）+ CTest 驱动
 - **单测层落地**（5 套件全绿，0.43s）：json 解析（合法/缺失/非法/非 rtsp/转义）、FrameQueue（按序/满丢最旧/clear）、copy_frame 语义（逐字节一致/非法入参/拒绝外部指针）、错误码与像素格式枚举值 ABI 锁、三后端 pixfmt 映射完整性
 - 可测性重构：`loadJsonCamerasFromFile(path)` 参数化；三后端 pixfmt 映射集中到 `src/pixfmt_map.h`（实现与单测共用）
 - M3：FFmpeg 后端 + RTSP 接入（里程碑达成）——
