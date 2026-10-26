@@ -43,6 +43,14 @@ which cl make nasm
 make -j"$(nproc)"
 make install
 
+# 产物就位：主工程 CMake 消费 third_party/ffmpeg/include 与 lib/<Config>
+#（全部不入库，本地产出本机使用）
+mkdir -p "$ROOT/lib/$CONFIG"
+cp -f "$ROOT/install/$CONFIG/lib/"*.lib "$ROOT/lib/$CONFIG/"
+if [ ! -d "$ROOT/include" ]; then
+  cp -r "$ROOT/install/$CONFIG/include" "$ROOT/include"
+fi
+
 echo "== 产物："
-ls -la "$ROOT/install/$CONFIG/lib/"
+ls -la "$ROOT/lib/$CONFIG/"
 echo "== BUILD $CONFIG DONE"

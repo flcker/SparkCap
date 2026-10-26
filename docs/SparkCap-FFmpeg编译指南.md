@@ -11,14 +11,17 @@
 
 按技术选型 §7 以 **MSVC v14.44** 自行编译静态裁剪版 FFmpeg，仅保留 RTSP/RTP/TCP/UDP 协议、H.264/HEVC 解码与 D3D11VA，供 `backend_ffmpeg.cpp` 内部链接；符号不进 sparkcap.dll 导出表（.def 隔离）。
 
-目标布局（`third_party/ffmpeg/`，成品 .lib 入库供团队直链，无需各自编译）：
+**仓库不含任何 FFmpeg 构建产物**（纯源码仓库）：克隆后须先按本指南构建一次（双配置约 8 分钟），产物全部在本机：
 
     third_party/ffmpeg/
-      VERSION            # 锁定记录：tag + commit hash + 编译日期 + 工具集
-      include/           # libavcodec/ libavformat/ libavutil/ 头文件
+      VERSION            # 锁定记录（入库）：tag + 编译日期 + 工具集
+      build_ffmpeg.sh    # 一键构建脚本（入库）
+      src/               # 源码树（本地产出，不入库）
+      install/           # make install 临时目录（不入库）
+      include/           # 构建产出的头（不入库，CMake 消费）
       lib/
-        Release/         # avcodec.lib avformat.lib avutil.lib（/MT）
-        Debug/           # 同上（/MTd；接受调试期不严格可省略此份）
+        Release/         # avcodec/avformat/avutil .lib，/MT（不入库，CMake 消费）
+        Debug/           # 同上，/MTd（不入库）
 
 ## 2. 环境准备（一次性）
 
@@ -91,23 +94,16 @@ CMake 已接好（`CMakeLists.txt`）：FFmpeg 头按 SYSTEM include + `/externa
 | `--extra-cflags="-MT"` | 静态 CRT，与主工程一致 |
 | `--prefix` | 分 Release/Debug 两目录安装 |
 
-## 6. 产物入库
+## 6. 产物就位（脚本自动完成）
 
-    cd third_party/ffmpeg
-    cp -r install/Release/include include
-    mkdir -p lib/Release lib/Debug
-    cp install/Release/lib/*.lib lib/Release/
-    cp install/Debug/lib/*.lib   lib/Debug/     # 若编了 Debug 版
+`build_ffmpeg.sh` 在 `make install` 后自动拷贝：
 
-写入 `VERSION`：
+- `install/<Config>/lib/*.lib` → `lib/<Config>/`（主工程 CMake 按 `$<CONFIG>` 链接）
+- `install/<Config>/include/` → `include/`（两配置头相同，只拷一次）
 
-    FFmpeg n9.0.2 (Lei)
-    commit: <git rev-parse HEAD 输出>
-    工具集: MSVC v14.44（VS2022 17.14），/MT（Debug: /MTd）
-    编译日期: 2026-10-xx
-    configure: 见 docs/SparkCap-FFmpeg编译指南.md §4.2
+全部为**本地产出、不入库**（.gitignore 覆盖 `src/`、`install/`、`include/`、`lib/`）。FFmpeg 升级或换新机器时重跑 §4 一行命令即可。
 
-仓库的 `.gitignore` 忽略 `src/`、`install/` 与 `include/`（源码树、临时安装、FFmpeg 头文件），**仅成品 `lib/` 入库**——团队成员链产物即可，无需本机重编（14.x ABI 兼容）。注意：克隆后本机无 `include/` 时需先跑一次构建（或从维护者处拷贝头文件）才能编译主工程。
+维护者升级 FFmpeg 版本时更新 `VERSION`（入库，记录锁定 tag、工具集与编译日期）。
 
 ## 7. 验证
 

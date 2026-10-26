@@ -31,6 +31,7 @@
 
 ### Changed
 
+- third_party/ffmpeg 仓库策略改为**纯源码**：`lib/`（编译产物）与 `include/` 一样移出仓库，各自构建（build_ffmpeg.sh 构建后自动拷贝到 CMake 消费路径；裁剪版双配置实测约 8 分钟，新机器含环境一次性约 20 分钟）——避免 82 MB 二进制永久累积 git 历史
 - 技术选型补充硬解决策依据：D3D11VA 为 API 标准（非厂商私有），一套代码经驱动覆盖 Intel（Quick Sync）/ AMD（VCN）/ NVIDIA（NVDEC）三家，不引入 QSV/NVDEC 专有路径；D3D11VA 不可用时自动回落软解（无 GPU、虚拟机、远程桌面、个别 codec profile 场景），软解兼作正确性基准
 - `sparkcap_frame_t` 增加 `size` 字段（帧数据字节长度）：压缩格式（MJPG）无法从 width/height/stride 推出缓冲大小，`copy_frame` 与应用读取均需要
 - 新增 `SPARKCAP_PIXFMT_RGB24`：DShow 虚拟摄像头（YY开播/OBS 类）普遍原生输出 24 位 BGR，按 F9 保真原则原样上报
