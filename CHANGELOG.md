@@ -6,6 +6,7 @@
 
 ### Added
 
+- M4c：D3D11VA 硬件解码（R7 落地，ABI 零变动）——`av_hwdevice_ctx_create(D3D11VA)` 挂解码器，硬解帧（AV_PIX_FMT_D3D11）经 `av_hwframe_transfer_data` 下载为 CPU NV12（应用接口不变）；创建失败（无 GPU/虚拟机/远程桌面/profile 不支持）静默回落软解（技术选型 §6 决策）；本机实测硬解路径激活（设备创建成功 + 每帧 hw transfer + 输出帧数据正确），11/11 全量回归通过
 - M4b：断流重连（F10/N5 落地，11/11 全绿）——demux 线程读流失败即进入自动重连（指数退避 1s→2s→4s 封顶无限重试，stop 随时可中断），重连期间 getFrame 持续等待（应用仅感知短暂 TIMEOUT）；清空过期帧（断流时刻起旧帧失效）；S1/S2 soak 测试（杀 MediaMTX 模拟断流 → 恢复流服务 → 自动恢复取帧，N5 计时 ≤10s 达标）
 - 修复三个真实缺陷（重连测试逼出）：
   - RTSP socket 超时选项名为 `timeout`（FFmpeg 5+ 由 stimeout 改名），误用 rw_timeout 导致服务器强杀后 TCP 挂起无界

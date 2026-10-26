@@ -12,6 +12,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/time.h>
 }
 
@@ -65,6 +66,8 @@ private:
     AVCodecContext*  m_dec = nullptr;
     AVPacket*        m_pkt = nullptr;
     AVFrame*         m_avframe = nullptr;
+    AVFrame*         m_swFrame = nullptr;    // 硬解帧下载目标（CPU NV12）
+    AVBufferRef*     m_hwDeviceCtx = nullptr;  // D3D11VA 设备（可用时；软解回落）
     int m_videoStream = -1;
     AVRational m_streamTb = {1, 1000000};
 
@@ -141,6 +144,16 @@ int FfmpegSession::openLocked()
 
     m_streamTb = m_fmt->streams[m_videoStream]->time_base;
     m_dec = avcodec_alloc_context3(dec);
+
+    // D3D11VA 硬解（R7，技术选型 §6）：创建失败（无 GPU/虚拟机/远程桌面）静默回落软解
+    if (m_dec != nullptr &&
+        av_hwdevice_ctx_create(&m_hwDeviceCtx, AV_HWDEVICE_TYPE_D3D11VA, nullptr,
+                               nullptr, 0) >= 0 &&
+        m_hwDeviceCtx != nullptr)
+    {
+        m_dec->hw_device_ctx = av_buffer_ref(m_hwDeviceCtx);
+    }
+
     if (m_dec == nullptr ||
         avcodec_parameters_to_context(m_dec, m_fmt->streams[m_videoStream]->codecpar) < 0 ||
         avcodec_open2(m_dec, dec, nullptr) < 0)
@@ -154,7 +167,8 @@ int FfmpegSession::openLocked()
 
     m_pkt = av_packet_alloc();
     m_avframe = av_frame_alloc();
-    if (m_pkt == nullptr || m_avframe == nullptr) {
+    m_swFrame = av_frame_alloc();
+    if (m_pkt == nullptr || m_avframe == nullptr || m_swFrame == nullptr) {
         closeLocked();
         return SPARKCAP_ERR_NO_MEMORY;
     }
@@ -163,6 +177,10 @@ int FfmpegSession::openLocked()
 
 void FfmpegSession::closeLocked()
 {
+    if (m_swFrame != nullptr) {
+        av_frame_free(&m_swFrame);
+        m_swFrame = nullptr;
+    }
     if (m_avframe != nullptr) {
         av_frame_free(&m_avframe);
         m_avframe = nullptr;
@@ -174,6 +192,10 @@ void FfmpegSession::closeLocked()
     if (m_dec != nullptr) {
         avcodec_free_context(&m_dec);
         m_dec = nullptr;
+    }
+    if (m_hwDeviceCtx != nullptr) {
+        av_buffer_unref(&m_hwDeviceCtx);
+        m_hwDeviceCtx = nullptr;
     }
     if (m_fmt != nullptr) {
         avformat_close_input(&m_fmt);
@@ -202,14 +224,26 @@ void FfmpegSession::demuxMain()
         bool gotFrame = false;
         if (avcodec_send_packet(m_dec, m_pkt) >= 0) {
             while (avcodec_receive_frame(m_dec, m_avframe) == 0) {
+                // D3D11VA 路径：硬解帧（AV_PIX_FMT_D3D11）下载为 CPU NV12 帧
+                AVFrame* deliver = m_avframe;
+                if (m_avframe->format == AV_PIX_FMT_D3D11) {
+                    av_frame_unref(m_swFrame);
+                    if (av_hwframe_transfer_data(m_swFrame, m_avframe, 0) < 0) {
+                        av_frame_unref(m_avframe);  // 下载失败丢帧（罕见）
+                        continue;
+                    }
+                    deliver = m_swFrame;
+                }
+
                 std::lock_guard<std::mutex> lk(m_mutex);
                 if (!m_running.load())
                     break;
-                if (pushFrameLocked(m_avframe)) {
+                if (pushFrameLocked(deliver)) {
                     gotFrame = true;
                     SetEvent(m_frameEvent);
                     invokeCallbackLocked();  // 回调模式（F5）：采集线程直接交付
                 }
+                av_frame_unref(m_avframe);
             }
         }
         av_packet_unref(m_pkt);
