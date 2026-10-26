@@ -66,3 +66,20 @@ add_test(NAME soak_reconnect
          COMMAND $<TARGET_FILE:test_soak_reconnect>
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(soak_reconnect PROPERTIES LABELS "soak")
+
+# 24h 长稳（默认 2 分钟冒烟进常规回归；夜间验收传分钟数跑 1440）
+add_executable(test_soak_stability soak/soak_24h.cpp)
+target_link_libraries(test_soak_stability PRIVATE sparkcap psapi)
+target_compile_features(test_soak_stability PRIVATE cxx_std_20)
+target_compile_options(test_soak_stability PRIVATE /W4 /WX /utf-8)
+add_test(NAME soak_stability
+         COMMAND $<TARGET_FILE:test_soak_stability> 2
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(soak_stability PROPERTIES LABELS "soak")
+
+# N1/A5 延迟测量工具（拍屏法，半自动：S4 操作流程见 testing-guide §5.3）
+add_executable(flash_screen tools/flash_screen.c)
+target_compile_options(flash_screen PRIVATE /W4 /WX /utf-8)
+add_executable(measure_latency tools/measure_latency.c)
+target_link_libraries(measure_latency PRIVATE sparkcap)
+target_compile_options(measure_latency PRIVATE /W4 /WX /utf-8)

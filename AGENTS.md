@@ -66,4 +66,4 @@ FFmpeg 许可合规是待确认事项（Spec §9-4）：结论出来前，禁止
 
 ## 当前状态
 
-**M1/M2/M3 完成**；**M4a/M4b/M4c 完成**（集成测试层、断流重连 F10/N5、D3D11VA 硬解 + 软解回落，11/11 全绿）。M4 待办（收口）：M4d soak 剩余（S3 24h 长稳 / S4 延迟拍屏法半自动）与全项验收（A1–A8 / N1–N6 对照 technical-design §9 与 testing-guide §8）。
+**M1–M4 全部完成**（功能与工程基座齐备，12/12 测试全绿）。三项验收待外部条件实测（工具就绪）：A1 插 USB 摄像头即验、A5/N1 拍屏法（flash_screen + measure_latency，见 testing-guide §5.3）、A6/N4 24h 长跑（soak_24h 1440，夜间执行）。Spec §9 待确认事项仍开放：音频采集、PTZ(ONVIF)、x86、许可合规结论。
