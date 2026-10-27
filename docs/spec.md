@@ -57,6 +57,7 @@
 | sparkcap_close | 关闭设备 |
 | sparkcap_destroy_backend | 销毁实例 |
 | sparkcap_version | 返回库版本字符串 |
+| sparkcap_query_features | 返回功能集位掩码（`sparkcap_feature_t`，编译期裁剪的运行时可探测入口；能力域命名与 CMake option 故意不同名：`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`） |
 
 ### 4.2 错误码
 

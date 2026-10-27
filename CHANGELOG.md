@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **功能集查询 API** `sparkcap_query_features`（Spec §4.1）：返回 `sparkcap_feature_t` 位掩码（`CAMERA` / `IP_CAMERA`，位值 ABI 锁定），编译期裁剪的运行时唯一可探测入口。能力域命名与 CMake option 故意不同名（`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`——构建者看链什么库，接入方看能采什么）；v2 域与未来接入技术（如 NDI）加性扩展。裁剪版 `loadJsonCameras` 桩检测到 sparkcap.json 存在时经日志回调 WARN（静默忽略变可诊断）。导出 15→16 符号；"库实现零 #if"原则唯一豁免在 query 函数（其职责即报告构建配置）
+- **编译期功能集**（技术选型 §10.4 首个落地）：`SPARKCAP_ENABLE_FFMPEG=OFF` 出 **182KB 纯本地采集 DLL**（全功能 3.7MB 的 4.7%；FFmpeg 系统依赖 ws2_32/crypt32/secur32/bcrypt/ncrypt 一并消失，仅剩 5 个系统 DLL；15 个导出符号与 ABI 不变）。实现：CMake 源文件替换（`backend_ffmpeg_stub.cpp` 桩），库代码零 `#if`；libav 头依赖从 pixfmt_map.h 隔离到 `src/pixfmt_av.h`（仅 FFMPEG 构建编入，pixfmt_map.h 恢复纯系统头依赖）；单测 pixfmt 的 av 段条件化。双构建验证：全功能 12/12、裁剪版 unit 5/5 + dumpbin 15 符号零 av* + 运行时冒烟（sparkcap.json 的 RTSP 条目不出现在枚举、MF/DShow 正常）。注意：多变体构建共享 out/ 目录，切换构建目录后需 `--clean-first`（MSBuild 增量按输出时间戳判定会误跳过）
+- **多域扩展架构预留**（技术选型 §10 v1.3 + roadmap.md）：定位演进为"Windows 统一采集库"——屏幕/窗口抓屏、麦克风、扬声器回采（loopback）为 v2 规划域。锁定决策：单库多域（A/V 统一时钟域为刚性依据）、API 族即选用模型（无 feature flag）、loopback 四特性（eRender 枚举分叉/静默期语义/格式跟随/进程级候选）、编译期功能集（CMake option 默认全开，头文件全量声明保 ABI）
+- 技术选型架构图（Mermaid，GitHub 原生渲染）：§4 核心分层（公共头 → facade → 后端抽象 → 后端矩阵 → 统一帧输出层）、§10 多域×平台矩阵（实线 Windows v2 范围，虚线跨平台增量后端路径）
+- docs/roadmap.md 路线图：v1.0 收口余项、v1.x 演进（热插拔/CI/FFMPEG 裁剪/带宽 WARN）、v2.0 多域（音频优先）
+- README 定位与状态更新（"骨架阶段"过时表述修正；API 概览补齐 15 符号）
+
 ### Fixed
 
 - 修复：DShow/MF `get_frame` 在拉取周期大于帧间隔时误报 `STREAM_LOST`——auto-reset 事件的残留信号（队列命中路径不消费事件）在下次"队列空"等待中被误当真信号唤醒，取不到帧即误报流断。修复为唤醒后回到循环顶重查队列（吸收假信号，继续等剩余时间），真 `STREAM_LOST` 仅来自 stop 或流失败。SparkCapDemo 33ms 拉取 + 15fps 会话实测：修复前 120 次拉取 33 次误报（27.5%，表现为画面与错误提示交替闪烁），修复后 0

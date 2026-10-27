@@ -45,11 +45,29 @@ static void case_version_and_null_guards()
     CHECK_EQ(sparkcap_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
 }
 
+// 功能集位值 ABI 锁 + 运行时行为（编译期裁剪的可探测性，Spec §4.1）
+static void case_feature_query()
+{
+    // 位值是公开 ABI：已发布不可变更
+    CHECK_EQ(SPARKCAP_FEATURE_CAMERA, 1);
+    CHECK_EQ(SPARKCAP_FEATURE_IP_CAMERA, 2);
+
+    const uint32_t f = sparkcap_query_features();
+    CHECK((f & SPARKCAP_FEATURE_CAMERA) != 0);  // 本地摄像头恒可用
+#if SPARKCAP_ENABLE_FFMPEG
+    CHECK((f & SPARKCAP_FEATURE_IP_CAMERA) != 0);
+#else
+    CHECK((f & SPARKCAP_FEATURE_IP_CAMERA) == 0);
+#endif
+    CHECK((f & ~(SPARKCAP_FEATURE_CAMERA | SPARKCAP_FEATURE_IP_CAMERA)) == 0);  // 无未定义位
+}
+
 int main()
 {
     g_suiteName = "unit_error_codes";
     RUN_CASE(case_error_code_values);
     RUN_CASE(case_pixfmt_values);
     RUN_CASE(case_version_and_null_guards);
+    RUN_CASE(case_feature_query);
     TEST_MAIN_END();
 }

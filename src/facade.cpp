@@ -350,3 +350,14 @@ const char* sparkcap_version(void)
 {
     return "1.0.0";
 }
+
+// 功能集查询（Spec §4.1）：本函数是"库实现零 #if"原则的唯一豁免——
+// 其职责就是报告构建配置，条件编译只住在这里（构建选项的清单页）。
+uint32_t sparkcap_query_features(void)
+{
+    uint32_t features = SPARKCAP_FEATURE_CAMERA;
+#if SPARKCAP_ENABLE_FFMPEG
+    features |= SPARKCAP_FEATURE_IP_CAMERA;
+#endif
+    return features;
+}

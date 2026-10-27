@@ -18,3 +18,4 @@ EXPORTS
     sparkcap_close
     sparkcap_destroy_backend
     sparkcap_version
+    sparkcap_query_features
