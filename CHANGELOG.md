@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复：DShow/MF `get_frame` 在拉取周期大于帧间隔时误报 `STREAM_LOST`——auto-reset 事件的残留信号（队列命中路径不消费事件）在下次"队列空"等待中被误当真信号唤醒，取不到帧即误报流断。修复为唤醒后回到循环顶重查队列（吸收假信号，继续等剩余时间），真 `STREAM_LOST` 仅来自 stop 或流失败。SparkCapDemo 33ms 拉取 + 15fps 会话实测：修复前 120 次拉取 33 次误报（27.5%，表现为画面与错误提示交替闪烁），修复后 0
+
 ### Added
 
 - **错误回调 API** `sparkcap_set_error_callback`（Spec §4.5）：流断开时通知回调模式应用（此前回调模式对流断完全无感知）；不发送恢复信号（帧回调恢复交付即恢复，Spec 决策）；MF 在 OnSample 失败/EOS 触发、FFmpeg 在断流确认（reconnect 前）触发；锁外调用 + CallbackGuard 守卫 + 异常吞掉

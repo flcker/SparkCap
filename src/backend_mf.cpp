@@ -281,29 +281,34 @@ int MfSession::getFrame(sparkcap_frame_t* outFrame, int timeoutMs)
     if (!m_running.load())
         return SPARKCAP_ERR_STREAM_LOST;  // 未启动或已 stop（Spec §4.5-2）
 
-    {   // 队列有帧直接取（环形缓冲，N2：不丢帧）
-        std::lock_guard<std::mutex> lk(m_mutex);
-        if (m_streamFailed)
-            return SPARKCAP_ERR_STREAM_LOST;
-        if (popFrameLocked(outFrame))
-            return SPARKCAP_ERR_OK;
+    const ULONGLONG deadline = GetTickCount64() +
+        ((timeoutMs < 0) ? ~0ULL : static_cast<ULONGLONG>(timeoutMs));
+    for (;;) {
+        {   // 队列有帧直接取（环形缓冲，N2：不丢帧）
+            std::lock_guard<std::mutex> lk(m_mutex);
+            if (m_streamFailed)
+                return SPARKCAP_ERR_STREAM_LOST;
+            if (popFrameLocked(outFrame))
+                return SPARKCAP_ERR_OK;
+        }
+
+        DWORD wait = INFINITE;
+        if (timeoutMs >= 0) {
+            const ULONGLONG now = GetTickCount64();
+            if (now >= deadline)
+                return SPARKCAP_ERR_TIMEOUT;
+            wait = static_cast<DWORD>(deadline - now);
+        }
+        const DWORD wr = WaitForSingleObject(m_frameEvent, wait);
+        if (wr == WAIT_TIMEOUT)
+            return SPARKCAP_ERR_TIMEOUT;
+        if (wr != WAIT_OBJECT_0)
+            return SPARKCAP_ERR_INTERNAL;
+        if (!m_running.load())
+            return SPARKCAP_ERR_STREAM_LOST;  // stop 唤醒
+        // 其余唤醒（真/假信号）回到循环顶重查队列——auto-reset 事件的
+        // 残留信号（队列命中路径不消费事件）不得误报 STREAM_LOST
     }
-
-    const DWORD wait = (timeoutMs < 0) ? INFINITE : static_cast<DWORD>(timeoutMs);
-    const DWORD wr = WaitForSingleObject(m_frameEvent, wait);
-    if (wr == WAIT_TIMEOUT)
-        return SPARKCAP_ERR_TIMEOUT;
-    if (wr != WAIT_OBJECT_0)
-        return SPARKCAP_ERR_INTERNAL;
-    if (!m_running.load())
-        return SPARKCAP_ERR_STREAM_LOST;  // stop 唤醒
-
-    std::lock_guard<std::mutex> lk(m_mutex);
-    if (m_streamFailed)
-        return SPARKCAP_ERR_STREAM_LOST;
-    if (popFrameLocked(outFrame))
-        return SPARKCAP_ERR_OK;
-    return SPARKCAP_ERR_STREAM_LOST;
 }
 
 int MfSession::stop()
