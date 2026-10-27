@@ -1,7 +1,7 @@
 # SparkCap 技术选型方案
 
-- 版本：1.1
-- 日期：2026-10-23
+- 版本：1.3（§10 多域扩展架构预留 + §4/§10 架构图）
+- 日期：2026-10-27
 - 状态：待评审
 - 关联文档：spec.md
 
@@ -52,12 +52,27 @@
 
 总体策略：MF 优先、DShow 兜底、FFmpeg 负责网络流。
 
+```mermaid
+flowchart TD
+    APP["接入方应用（仅依赖公共头）"] --> API["sparkcap.h / sparkcap_types.h<br/>平台无关 C API（opaque 句柄，无 Windows 类型）"]
+    API --> FACADE["facade.cpp<br/>生命周期编排 · 句柄注册表 · 异常边界<br/>COM/MFStartup（Windows 平台件）"]
+    FACADE --> DM["SparkCapDeviceManager<br/>双后端枚举合并去重 · JSON 注入 · 工厂分发"]
+    DM --> IF["ICaptureBackend / ICaptureSession<br/>后端抽象（capture_backend.h，src/ 私有）"]
+    IF --> MF["MF 后端<br/>IMFSourceReader 异步<br/>buffer Lock 零拷贝"]
+    IF --> DS["DShow 后端<br/>ISampleGrabber + CaptureGraph<br/>BufferCB 帧拷贝"]
+    IF --> FF["FFmpeg 后端<br/>RTSP + H.264/HEVC 软解/D3D11VA<br/>内部 demux 线程 + 断流重连"]
+    MF --> Q["统一帧输出层<br/>FrameQueue 环形队列（8 槽满丢最旧）<br/>帧携带 pixelFormat + stride"]
+    DS --> Q
+    FF --> Q
+    Q --> APP
+```
+
 - DeviceManager：调用 MFEnumDeviceSources 与 DirectShow 双后端枚举，合并去重，维护设备表；打开时按设备来源自动选后端。
 - MF 后端：基于 IMFSourceReader 异步读取，D3D11 路径 surface 直通实现零拷贝，CPU 路径经 IMF2DBuffer 减少拷贝，支持 MF_SA_D3D11_AWARE。
 - DShow 后端：ISampleGrabber + CaptureGraph。
 - FFmpeg 后端：处理 rtsp:// 流，H.264/HEVC 解码，接 D3D11VA。
 - 统一帧输出层：环形队列 + 回调，帧结构携带 pixelFormat 与 stride，不暴露后端差异。
-- 预留 ICaptureBackend 抽象接口，新增后端上层零改动。
+- ICaptureBackend 抽象接口：新增后端上层零改动（FFmpeg 后端与其余二者线程模型/生命周期完全异质而共存于同一接口，即抽象层有效性的实证）。
 
 ## 5. 对外 API 风格
 
@@ -121,3 +136,58 @@
 | M2 | 统一帧层 + 零拷贝路径 | 延迟数据 |
 | M3 | FFmpeg 后端 + RTSP 接入 | IP Camera 取帧 |
 | M4 | 硬解 + 断流重连 + 稳定性 | 验收通过 |
+
+## 10. 多域扩展架构预留（v2 方向）
+
+定位从"摄像头采集库"演进为"Windows 统一采集库"：摄像头（已交付）→ 屏幕/窗口抓屏、麦克风、扬声器回采（规划，见 roadmap.md）。本节锁定架构决策；域 API 细节见 Spec §9。
+
+```mermaid
+flowchart TD
+    API["sparkcap.h —— 统一 C API<br/>一套错误码 · 回调/日志路由 · 统一时钟域"]
+    API --> V["视频域 API 族<br/>（已交付，15 符号）"]
+    API --> A["音频域 API 族 sparkcap_audio_*<br/>（规划）麦克风 capture + 扬声器回采 loopback"]
+    API --> S["屏幕域 API 族<br/>（规划）屏幕/窗口抓屏"]
+    V --> VW["Windows: MF / DShow / FFmpeg+D3D11VA"]
+    A --> AW["Windows: WASAPI<br/>（eCapture + eRender loopback）"]
+    S --> SW["Windows: DXGI Desktop Duplication / WGC"]
+    VW -.跨平台 = 增量后端.-> VL["Linux: V4L2 / FFmpeg+VA-API<br/>macOS: AVFoundation / FFmpeg+VideoToolbox"]
+    AW -.-> AL["Linux: PipeWire · macOS: Core Audio"]
+    SW -.-> SL["Linux: PipeWire · macOS: ScreenCaptureKit"]
+```
+
+实线为 v2 交付范围（Windows）；虚线为跨平台路径——接口与契约不动，每平台是后端矩阵的增量行（§10.1）。
+
+### 10.1 单库多域（不拆库）
+
+- **A/V 同步是刚性需求**（录制/推流下游都要摄像头 + 麦克风对齐）：单库统一时钟域，多域时间戳同源可对齐；拆库则两套时基跨库对齐，做对极难
+- 新增域零新增重依赖（WASAPI / DXGI Desktop Duplication / WGC 皆系统 API），DLL 体积不显著增长（大头 FFmpeg 已在）
+- 接入体验：一个头文件、一个 DLL、一套错误码
+- **拆库触发条件**：某域引入重依赖（如编码器）且体积不可接受——届时剥离为伴随 DLL（如 sparkcap-ffmpeg.dll，主 DLL 运行时探测、RTSP 不可用时优雅降级），而非重构现有库
+
+### 10.2 选用模型：API 族即功能集
+
+- 域 API 按前缀分族（`sparkcap_audio_*` 等），调用哪族即用哪域，无 feature flag、无运行时启用开关
+- 域资源懒加载（延续现有模式：FFmpeg 网络层首次 RTSP open 才初始化、D3D11VA 创建失败回落），不调用的域零运行时代价
+- 组合使用 = 各域会话句柄并存共享 backend（A8 多设备并发模型的推广）
+
+### 10.3 扬声器回采（loopback）特性
+
+"采集电脑播放的声音" = WASAPI loopback：在 **eRender 输出端点**上回环数字混音（数字级拷贝，与扬声器实际是否出声无关；区别于麦克风录音的空气传导）。四个架构要点：
+
+1. **枚举分叉**：麦克风枚举 eCapture 端点，loopback 枚举 eRender 端点——音频枚举条目带 kind（capture / loopback）
+2. **静默期语义必须契约化**：系统无播放时 WASAPI 不产生数据——静默期 get_buffer 返回 TIMEOUT 还是补零帧，须在 Spec 定义（录制/推流对两种行为的处理完全不同）
+3. **格式不可控**：采样格式由系统混音器决定（应用不能指定），用户中途改系统采样率 → 流格式变化（重协商或经错误回调通知）
+4. **进程级回采**（只采单个应用的音，Win10 2004+ Process Loopback API）：与端点级 loopback 是不同激活路径，列为 v2+ 候选
+
+loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；仅当应用把麦克风播放出来（侧音/侦听/虚拟调音台混音）才会进入端点混音。库不做隐式混音——"系统声音 + 麦克风"开两个会话独立成流，混音在应用侧。
+
+### 10.4 编译期功能集（CMake option）
+
+    option(SPARKCAP_ENABLE_VIDEO   "摄像头采集（MF/DShow）"  ON)
+    option(SPARKCAP_ENABLE_FFMPEG  "RTSP 网络流 + D3D11VA"   ON)    # 已实现
+    option(SPARKCAP_ENABLE_AUDIO   "麦克风/扬声器回采"       OFF)   # 域落地时引入
+    option(SPARKCAP_ENABLE_SCREEN  "屏幕/窗口抓屏"           OFF)   # 域落地时引入
+
+- **默认全开**：官方发布物 = 全功能单 DLL，生态只有一个标准产物（变体由自建者按需触发）
+- 自建者裁剪：`FFMPEG=OFF` 出 **182KB** 纯本地采集 DLL（实测，全功能 3.7MB 的 4.7%；ws2_32 等 FFmpeg 系统依赖一并消失，依赖仅剩 5 个系统 DLL；15 个导出符号与 ABI 不变，实现方式为 CMake 源文件替换 `backend_ffmpeg_stub.cpp`，库代码零 `#if`，libav 头依赖隔离在 `src/pixfmt_av.h`）
+- 三条纪律：头文件全量声明不变（未启用域运行时返回 `SPARKCAP_ERR_UNSUPPORTED`，ABI 不裂）；未来域 API 符号落地时 `.def` 按启用域拼接；CI 全功能跑全量 + 代表变体（FFMPEG=OFF）跑编译与单测，不做 2ⁿ 组合

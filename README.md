@@ -1,6 +1,6 @@
 # SparkCap
 
-Windows 摄像头统一采集库——一套 C API，三种后端：**Media Foundation（优先）/ DirectShow（兜底）/ FFmpeg（RTSP 网络流）**。API 风格延续 [videoInput](https://github.com/ofTheo/videoInput) 的简单直接。
+Windows 统一采集库——一套 C API。**摄像头域已交付**（三种后端：Media Foundation 优先 / DirectShow 兜底 / FFmpeg 负责 RTSP 网络流），屏幕/窗口抓屏、麦克风、扬声器回采（loopback）为规划域（见[路线图](docs/roadmap.md)）。API 风格延续 [videoInput](https://github.com/ofTheo/videoInput) 的简单直接。
 
 ## 特性
 
@@ -13,7 +13,7 @@ Windows 摄像头统一采集库——一套 C API，三种后端：**Media Foun
 
 ## 状态
 
-骨架阶段（stub 实现，接口返回 `SPARKCAP_ERR_UNSUPPORTED`）。里程碑：
+**摄像头域 M1–M4 全部交付**：12/12 测试全绿，DLL 3.7MB，15 个导出 API，错误/日志回调齐备。里程碑：
 
 - [x] M1 双后端枚举 + 本地设备取帧
 - [x] M2 统一帧层（环形队列 + 回调模式）
@@ -28,6 +28,8 @@ Windows 摄像头统一采集库——一套 C API，三种后端：**Media Foun
 cmake --preset default
 cmake --build --preset release
 ```
+
+纯本地采集可裁剪 FFmpeg（182KB DLL，15 符号/ABI 不变）：`cmake -B build-min -DSPARKCAP_ENABLE_FFMPEG=OFF`。
 
 产物：`out/x64/Release/sparkcap.dll`（Debug 为 `sparkcapd.dll`）。
 
@@ -76,9 +78,12 @@ int main(void)
 | 函数 | 说明 |
 |---|---|
 | `sparkcap_list_devices` | 枚举设备（两段式） |
+| `sparkcap_get_formats` | 查询设备能力（分辨率/格式/帧率，两段式） |
 | `sparkcap_create_backend` / `sparkcap_destroy_backend` | 后端实例生命周期 |
 | `sparkcap_open` / `sparkcap_close` | 设备生命周期 |
 | `sparkcap_set_frame_callback` | 注册帧回调（start 前） |
+| `sparkcap_set_error_callback` | 注册流断错误回调（start 前） |
+| `sparkcap_set_log_callback` | 注册日志回调（进程级，FFmpeg av_log 路由） |
 | `sparkcap_start` / `sparkcap_stop` | 采集控制 |
 | `sparkcap_get_frame` | 拉取一帧（带超时） |
 | `sparkcap_copy_frame` / `sparkcap_release_frame` | 帧深拷贝与释放 |
@@ -90,6 +95,7 @@ int main(void)
 |---|---|
 | [技术选型方案](docs/technical-design.md) | 架构决策、方案对比、里程碑 |
 | [Spec](docs/spec.md) | 接口契约、线程模型、验收标准 |
+| [路线图](docs/roadmap.md) | v1.x 演进与 v2 多域扩展（屏幕/麦克风/扬声器回采） |
 | [命名规范](docs/naming-conventions.md) | 符号、目录、导出控制 |
 | [CHANGELOG](CHANGELOG.md) | 变更记录 |
 

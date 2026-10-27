@@ -1,0 +1,53 @@
+# SparkCap 路线图
+
+定位演进：**Windows 统一采集库**——摄像头域已交付，屏幕/麦克风/扬声器回采为规划域。架构决策见 [技术选型 §10](technical-design.md)；域 API 待确认项见 [Spec §9](spec.md)。
+
+## 当前：v1.0 收口（摄像头域）
+
+M1–M4 全部交付（12/12 测试全绿）。剩余验收项（工具就绪，依赖外部条件）：
+
+- [ ] A1：USB 物理摄像头即插即验
+- [ ] A5/N1：拍屏法端到端延迟（flash_screen + measure_latency）
+- [ ] A6/N4：24h 长稳（soak_24h 1440，夜间执行）
+- [ ] **v1.0.0 tag**：A5/A6 收口后打
+
+## v1.x：摄像头域打磨
+
+| 项 | 内容 | 规模 |
+|---|---|---|
+| ~~编译期裁剪~~ | ✅ **已交付**：`SPARKCAP_ENABLE_FFMPEG=OFF` 出 182KB 纯本地 DLL（15 符号/ABI 不变，技术选型 §10.4） | 完成 |
+| 设备热插拔事件 | MF MEVideoCaptureDeviceRemoved → 错误回调通知（Spec §9-5） | 中 |
+| CI | GitHub Actions：unit + Release 构建 + dumpbin 导出检查（含 FFMPEG=OFF 变体） | 小 |
+| start 带宽 WARN | usb# 前缀判定 + 未压缩格式估算超 ~35MB/s 经日志回调提示（J.ZAO 实战沉淀；措辞条件式，不依赖 USB 速度判定） | 小 |
+| 许可终审 | LGPL-3.0 法务确认 | 外部 |
+
+## v2.0：多域扩展
+
+### 音频域（优先级最高）
+
+- **麦克风**（WASAPI capture）+ **扬声器回采**（loopback，采集电脑播放的声音）
+- 新 API 族 `sparkcap_audio_*`：音频帧结构与视频 frame_t 不兼容，独立帧结构与生命周期
+- 关键设计输入（技术选型 §10.3）：
+  - 枚举条目带 kind（capture / loopback；loopback 枚举 eRender 输出端点）
+  - 静默期语义契约化（无播放时 TIMEOUT or 补零帧）
+  - 格式跟随（loopback 格式由系统混音器决定，中途变化 → 重协商/通知）
+  - A/V 统一时钟域（与视频帧时间戳同源，录制/推流直接对齐）
+- 回调/错误/日志路由复用现有机制
+
+### 屏幕抓屏域
+
+- DXGI Desktop Duplication（桌面）+ Windows.Graphics.Capture（窗口，Win10 1903+）
+- 枚举模型待定（显示器/窗口不是 UVC 设备，与 list_devices 的关系，Spec §9-6）
+- 帧可直接套用视频 frame_t（BGRA）
+
+### 组合场景（单库的回报）
+
+摄像头 + 麦克风 + 扬声器回采并存，时间戳同源——录制/推流下游的 A/V 对齐免费获得（技术选型 §10.1）。
+
+## v2+ 候选（未排期）
+
+- 进程级 loopback（只采单个应用，Win10 2004+ Process Loopback）
+- PTZ / ONVIF 控制（Spec §9-2）
+- x86 支持（Spec §9-3）
+- **NDI 接入**：闭源官方 SDK + 运行时 DLL（非 LGPL，与零第三方运行时依赖原则冲突）——必然形态为 `ENABLE_NDI`（默认 OFF）+ 伴随 DLL（主 DLL 运行时 LoadLibrary 探测），即技术选型 §10.1"拆库触发条件"的首个现实候选；落地时 feature 位加性扩展（`SPARKCAP_FEATURE_NDI`）
+- FFmpeg 剥离为伴随 DLL（体积逃生舱，技术选型 §10.1 触发条件）

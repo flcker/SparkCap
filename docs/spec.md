@@ -179,9 +179,9 @@ JSON 示例：
 
 ## 9. 待确认事项
 
-1. 是否需要音频采集；
+1. **音频域**（麦克风 + 扬声器回采，v2 规划）：帧 API 族设计——音频帧结构与视频 frame_t 不兼容（采样率/声道/采样格式），须独立 API（`sparkcap_audio_*`）；枚举条目带 kind（capture=麦克风 / loopback=扬声器回采）；**静默期语义必须契约化**（loopback 在系统无播放时不产生数据，静默期返回 TIMEOUT 还是补零帧待定）；loopback 格式由系统混音器决定（格式中途变化 → 重协商或流断通知）；A/V 统一时钟域设计（多域时间戳同源对齐）；
 2. 是否需要 PTZ（ONVIF）控制；
 3. x86 是否列入首版；
 4. 许可合规结论（工程侧已选 LGPL-3.0 + 依赖声明 NOTICE，法务终审待完成）；
 5. 本地设备热插拔（USB 拔出事件通知，MF 侧有 MEVideoCaptureDeviceRemoved 事件可用）；
-6. 日志/诊断回调（sparkcap_set_log_callback）是否纳入首版接口。
+6. **屏幕抓屏域**（v2 规划）：DXGI Desktop Duplication / Windows.Graphics.Capture 的枚举模型——显示器/窗口不是 UVC 设备，与 `sparkcap_list_devices` 的关系（并列新入口 or 泛化）待定。

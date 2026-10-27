@@ -1,6 +1,6 @@
 # SparkCap 项目约定
 
-Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底、FFmpeg 负责网络流（RTSP）**。API 风格延续 videoInput 的简单直接。
+Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优先、DShow 兜底、FFmpeg 负责网络流 RTSP），屏幕/麦克风/扬声器回采为规划域——路线图与架构预留见 docs/roadmap.md 与技术选型 §10。API 风格延续 videoInput 的简单直接。
 
 ## 必读文档（v1.1，均为开发与验收依据）
 
@@ -13,6 +13,7 @@ Windows 摄像头统一采集库（C 门面 DLL）：**MF 优先、DShow 兜底�
 | docs/building-ffmpeg.md | FFmpeg 静态裁剪编译全流程（M3） |
 | docs/testing-guide.md | 测试分层、用例清单（U/I/S 系）、M4 验收映射 |
 | docs/integration-guide.md | 接入方实务指南：帧处理/get_formats 两段式/设备排查 |
+| docs/roadmap.md | v1.x 演进与 v2 多域扩展（屏幕/麦克风/扬声器回采） |
 
 **规则：改对外接口、错误码或语义时，先改 Spec 再改代码，保持两者一致；显著变更记入 [CHANGELOG.md](CHANGELOG.md) 的 Unreleased 段。**
 
