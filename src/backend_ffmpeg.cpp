@@ -5,7 +5,7 @@
 
 #include "backend_ffmpeg.h"
 #include "frame_queue.h"
-#include "pixfmt_map.h"
+#include "pixfmt_av.h"
 
 // libav 顶层头自带 extern "C"，但子头（time.h 等）单独包含无保护——统一外裹
 extern "C" {

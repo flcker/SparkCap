@@ -17,15 +17,25 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 
+# ---- 编译期功能集（技术选型 §10.4：默认全开，官方发布物 = 全功能单 DLL）----
+# ENABLE_VIDEO/AUDIO/SCREEN 随对应域落地引入；当前仅 FFMPEG 可裁剪。
+option(SPARKCAP_ENABLE_FFMPEG "RTSP 网络流后端（FFmpeg + D3D11VA）；OFF 出纯本地采集 DLL" ON)
+
 # ---- 库 ----
-add_library(sparkcap SHARED
+set(SPARKCAP_SRC
     src/facade.cpp
     src/device_manager.cpp
-    src/json_config.cpp
     src/backend_mf.cpp
     src/backend_dshow.cpp
-    src/backend_ffmpeg.cpp
 )
+if (SPARKCAP_ENABLE_FFMPEG)
+    list(APPEND SPARKCAP_SRC src/backend_ffmpeg.cpp src/json_config.cpp)
+else()
+    # 桩：头文件/ABI/导出面不变（枚举无 RTSP 设备），见 backend_ffmpeg_stub.cpp
+    list(APPEND SPARKCAP_SRC src/backend_ffmpeg_stub.cpp)
+endif()
+
+add_library(sparkcap SHARED ${SPARKCAP_SRC})
 
 target_include_directories(sparkcap
     PUBLIC
@@ -33,25 +43,30 @@ target_include_directories(sparkcap
         $<INSTALL_INTERFACE:include>
 )
 
-# FFmpeg 头为外部代码：SYSTEM + /external:W0 不受 /W4 /WX 管辖
-target_include_directories(sparkcap SYSTEM PRIVATE third_party/ffmpeg/include)
-
 # COM/MF/DShow 系统库：ole32+oleaut32（COM）、mfplat+mf+mfuuid+mfreadwrite（MF）、strmiids（DShow）
 target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid mfreadwrite strmiids)
 
-# FFmpeg 静态库（M3：libav* 头仅在 backend_ffmpeg.cpp 内部，符号经 .def 隔离）
-# 系统依赖：ws2_32（socket）、crypt32+secur32（schannel TLS）、bcrypt（随机数）
-set(FFMPEG_LIB_DIR ${CMAKE_SOURCE_DIR}/third_party/ffmpeg/lib/$<CONFIG>)
-target_link_libraries(sparkcap PRIVATE
-    ${FFMPEG_LIB_DIR}/avformat.lib
-    ${FFMPEG_LIB_DIR}/avcodec.lib
-    ${FFMPEG_LIB_DIR}/avutil.lib
-    ws2_32 crypt32 secur32 bcrypt ncrypt)
+if (SPARKCAP_ENABLE_FFMPEG)
+    # FFmpeg 头为外部代码：SYSTEM + /external:W0 不受 /W4 /WX 管辖
+    target_include_directories(sparkcap SYSTEM PRIVATE third_party/ffmpeg/include)
+
+    # FFmpeg 静态库（M3：libav* 头仅在 backend_ffmpeg.cpp 内部，符号经 .def 隔离）
+    # 系统依赖：ws2_32（socket）、crypt32+secur32（schannel TLS）、bcrypt（随机数）
+    set(FFMPEG_LIB_DIR ${CMAKE_SOURCE_DIR}/third_party/ffmpeg/lib/$<CONFIG>)
+    target_link_libraries(sparkcap PRIVATE
+        ${FFMPEG_LIB_DIR}/avformat.lib
+        ${FFMPEG_LIB_DIR}/avcodec.lib
+        ${FFMPEG_LIB_DIR}/avutil.lib
+        ws2_32 crypt32 secur32 bcrypt ncrypt)
+endif()
 
 target_compile_features(sparkcap PRIVATE cxx_std_20)
 
 # 构建库本体时切换为导出端（命名规范 §6）
-target_compile_definitions(sparkcap PRIVATE SPARKCAP_EXPORTS)
+# ENABLE_FFMPEG 宏供 facade 的 sparkcap_query_features 报告功能集（§10.4）
+target_compile_definitions(sparkcap PRIVATE
+    SPARKCAP_EXPORTS
+    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>)
 
 # 静态 CRT（/MT，Debug /MTd）：无运行时 DLL 依赖（Spec §8）
 set_property(TARGET sparkcap PROPERTY

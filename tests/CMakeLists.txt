@@ -27,13 +27,21 @@ set_tests_properties(unit_copy PROPERTIES LABELS "unit")
 
 add_executable(test_unit_error unit/test_error_codes.cpp)
 target_link_libraries(test_unit_error PRIVATE sparkcap)
+target_compile_definitions(test_unit_error PRIVATE
+    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>)
 target_compile_options(test_unit_error PRIVATE /W4 /WX /utf-8)
 add_test(NAME unit_error COMMAND test_unit_error)
 set_tests_properties(unit_error PROPERTIES LABELS "unit")
 
 add_executable(test_unit_pixfmt unit/test_pixfmt_map.cpp)
 target_include_directories(test_unit_pixfmt SYSTEM PRIVATE
-    ${SRC_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/third_party/ffmpeg/include)
+    ${SRC_DIR} ${CMAKE_SOURCE_DIR}/include)
+if (SPARKCAP_ENABLE_FFMPEG)
+    target_include_directories(test_unit_pixfmt SYSTEM PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_party/ffmpeg/include)
+endif()
+target_compile_definitions(test_unit_pixfmt PRIVATE
+    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>)
 target_link_libraries(test_unit_pixfmt PRIVATE strmiids mfuuid)  # MEDIASUBTYPE_/MFVideoFormat_ GUID
 target_compile_options(test_unit_pixfmt PRIVATE /W4 /WX /utf-8 /external:W0)
 add_test(NAME unit_pixfmt COMMAND test_unit_pixfmt)

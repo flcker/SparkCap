@@ -4,6 +4,9 @@
 #include "../test_macros.h"
 
 #include "pixfmt_map.h"
+#if SPARKCAP_ENABLE_FFMPEG
+#include "pixfmt_av.h"  // AVPixelFormat 映射（FFMPEG 构建才编入）
+#endif
 
 static void case_mf_mapping()
 {
@@ -34,6 +37,7 @@ static void case_dshow_mapping()
     CHECK(!sparkcap::pixFmtFromDshow(zero, &pf));
 }
 
+#if SPARKCAP_ENABLE_FFMPEG
 static void case_av_mapping()
 {
     sparkcap_pixfmt_t pf = SPARKCAP_PIXFMT_UNKNOWN;
@@ -42,12 +46,15 @@ static void case_av_mapping()
     CHECK(!sparkcap::pixFmtFromAv(AV_PIX_FMT_YUV422P, &pf));  // M3 软解范围外
     CHECK(!sparkcap::pixFmtFromAv(-1, &pf));
 }
+#endif
 
 int main()
 {
     g_suiteName = "unit_pixfmt_map";
     RUN_CASE(case_mf_mapping);
     RUN_CASE(case_dshow_mapping);
+#if SPARKCAP_ENABLE_FFMPEG
     RUN_CASE(case_av_mapping);
+#endif
     TEST_MAIN_END();
 }

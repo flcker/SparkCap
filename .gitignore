@@ -1,6 +1,7 @@
 # 构建输出
 out/
 build/
+build-min/
 
 # CMake
 CMakeCache.txt

@@ -1,6 +1,7 @@
-// SparkCap 内部：三后端像素格式映射（src/ 私有头，集中供实现与单测使用）。
+// SparkCap 内部：MF/DShow 像素格式映射（src/ 私有头，集中供实现与单测使用）。
 // 映射集即"库支持的输出侧格式"（技术选型 §5；F9 保真：仅设备/流原生输出）。
-// 本头聚合三套依赖（MF/DShow 系统头 + libav），均为编译期、无运行时影响。
+// FFmpeg 的 AVPixelFormat 映射在 pixfmt_av.h（仅 FFMPEG 构建编入，
+// libav 头依赖隔离在该头，本头保持系统头依赖、可独立于 FFmpeg 编译）。
 
 #pragma once
 
@@ -8,10 +9,6 @@
 
 #include <mfapi.h>   // MFVideoFormat_*
 #include <dshow.h>   // MEDIASUBTYPE_*（经 uuids.h）
-
-extern "C" {
-#include <libavutil/pixfmt.h>  // AV_PIX_FMT_*
-}
 
 namespace sparkcap {
 
@@ -54,18 +51,6 @@ inline bool pixFmtFromDshow(const GUID& g, sparkcap_pixfmt_t* out)
         *out = SPARKCAP_PIXFMT_RGB32;
     else if (g == MEDIASUBTYPE_RGB24)
         *out = SPARKCAP_PIXFMT_RGB24;
-    else
-        return false;
-    return true;
-}
-
-// ---- FFmpeg（AVPixelFormat，M3 软解主流输出）----
-inline bool pixFmtFromAv(int avFmt, sparkcap_pixfmt_t* out)
-{
-    if (avFmt == AV_PIX_FMT_YUV420P)
-        *out = SPARKCAP_PIXFMT_I420;
-    else if (avFmt == AV_PIX_FMT_NV12)
-        *out = SPARKCAP_PIXFMT_NV12;
     else
         return false;
     return true;
