@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **摄像头域 API 重命名为 `sparkcap_camera_*` 前缀**（v1.0.0 tag 前的窗口期决策，ABI 级变更）：两级前缀结构——跨域通用层保持 `sparkcap_`（create/destroy_backend、version、query_features、set_log_callback 共 5 个），域操作层 11 个加 `camera_`（list_devices、get_formats、open/close、set_frame/error_callback、start/stop/get_frame、copy/release_frame）。动机：多域（roadmap v2）确定落地，`sparkcap_camera_*` / `sparkcap_audio_*` / `sparkcap_screen_*` 对称族从符号层自文档化域归属；tag 后改名即 2.0 破坏版本，趁唯一下游（SparkCapDemo）联动成本最低时改对。类型名不带域前缀（`sparkcap_frame_t` 等为库级类型，屏幕域将复用视频帧结构；类型不进导出表，域专属化可后置）
+
 ### Added
 
 - **功能集查询 API** `sparkcap_query_features`（Spec §4.1）：返回 `sparkcap_feature_t` 位掩码（`CAMERA` / `IP_CAMERA`，位值 ABI 锁定），编译期裁剪的运行时唯一可探测入口。能力域命名与 CMake option 故意不同名（`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`——构建者看链什么库，接入方看能采什么）；v2 域与未来接入技术（如 NDI）加性扩展。裁剪版 `loadJsonCameras` 桩检测到 sparkcap.json 存在时经日志回调 WARN（静默忽略变可诊断）。导出 15→16 符号；"库实现零 #if"原则唯一豁免在 query 函数（其职责即报告构建配置）

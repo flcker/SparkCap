@@ -1,7 +1,7 @@
 # SparkCap 规格说明（Spec）
 
-- 版本：1.1
-- 日期：2026-10-23
+- 版本：1.2（摄像头域 API 加 `sparkcap_camera_` 域前缀，两级前缀结构见命名规范 §2）
+- 日期：2026-10-28
 - 状态：待评审
 - 关联文档：design.md
 
@@ -42,19 +42,19 @@
 
 | 函数 | 说明 |
 |---|---|
-| sparkcap_list_devices | 枚举设备 |
-| sparkcap_get_formats | 查询设备能力（分辨率/格式/帧率，两段式） |
+| sparkcap_camera_list_devices | 枚举设备 |
+| sparkcap_camera_get_formats | 查询设备能力（分辨率/格式/帧率，两段式） |
 | sparkcap_create_backend | 创建后端实例 |
-| sparkcap_open | 打开设备 |
-| sparkcap_set_frame_callback | 注册帧回调（回调模式入口，须在 start 前） |
-| sparkcap_set_error_callback | 注册错误回调（流断开通知，须在 start 前） |
+| sparkcap_camera_open | 打开设备 |
+| sparkcap_camera_set_frame_callback | 注册帧回调（回调模式入口，须在 start 前） |
+| sparkcap_camera_set_error_callback | 注册错误回调（流断开通知，须在 start 前） |
 | sparkcap_set_log_callback | 注册日志回调（诊断输出，任意时机） |
-| sparkcap_start | 启动采集 |
-| sparkcap_get_frame | 拉取一帧 |
-| sparkcap_copy_frame | 深拷贝一帧 |
-| sparkcap_release_frame | 释放帧 |
-| sparkcap_stop | 停止采集 |
-| sparkcap_close | 关闭设备 |
+| sparkcap_camera_start | 启动采集 |
+| sparkcap_camera_get_frame | 拉取一帧 |
+| sparkcap_camera_copy_frame | 深拷贝一帧 |
+| sparkcap_camera_release_frame | 释放帧 |
+| sparkcap_camera_stop | 停止采集 |
+| sparkcap_camera_close | 关闭设备 |
 | sparkcap_destroy_backend | 销毁实例 |
 | sparkcap_version | 返回库版本字符串 |
 | sparkcap_query_features | 返回功能集位掩码（`sparkcap_feature_t`，编译期裁剪的运行时可探测入口；能力域命名与 CMake option 故意不同名：`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`） |
@@ -116,14 +116,14 @@
 单个设备的合法调用序列：
 
     sparkcap_create_backend
-      → sparkcap_list_devices
-      → sparkcap_get_formats（可选，open 前后均可）
-      → sparkcap_open
-      → sparkcap_set_frame_callback（可选，须在 start 前）
-      → sparkcap_start
-      → sparkcap_get_frame / 回调交付
-      → sparkcap_stop
-      → sparkcap_close
+      → sparkcap_camera_list_devices
+      → sparkcap_camera_get_formats（可选，open 前后均可）
+      → sparkcap_camera_open
+      → sparkcap_camera_set_frame_callback（可选，须在 start 前）
+      → sparkcap_camera_start
+      → sparkcap_camera_get_frame / 回调交付
+      → sparkcap_camera_stop
+      → sparkcap_camera_close
       → sparkcap_destroy_backend
 
 1. set_frame_callback / set_error_callback 须在 start 前注册，start 后注册返回 SPARKCAP_ERR_UNSUPPORTED；set_log_callback 任意时机可注册；
@@ -185,4 +185,4 @@ JSON 示例：
 3. x86 是否列入首版；
 4. 许可合规结论（工程侧已选 LGPL-3.0 + 依赖声明 NOTICE，法务终审待完成）；
 5. 本地设备热插拔（USB 拔出事件通知，MF 侧有 MEVideoCaptureDeviceRemoved 事件可用）；
-6. **屏幕抓屏域**（v2 规划）：DXGI Desktop Duplication / Windows.Graphics.Capture 的枚举模型——显示器/窗口不是 UVC 设备，与 `sparkcap_list_devices` 的关系（并列新入口 or 泛化）待定。
+6. **屏幕抓屏域**（v2 规划）：DXGI Desktop Duplication / Windows.Graphics.Capture 的枚举模型——显示器/窗口不是 UVC 设备，与 `sparkcap_camera_list_devices` 的关系（并列新入口 or 泛化）待定。

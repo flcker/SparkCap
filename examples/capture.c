@@ -36,14 +36,14 @@ int main(int argc, char** argv)
 
     /* 2. 枚举设备（两段式：先取数量再取列表） */
     int count = 0;
-    sparkcap_list_devices(cap, NULL, &count);
+    sparkcap_camera_list_devices(cap, NULL, &count);
     if (count <= 0) {
         printf("no devices\n");
         sparkcap_destroy_backend(cap);
         return 1;
     }
     sparkcap_device_info_t* devs = calloc(count, sizeof(*devs));
-    sparkcap_list_devices(cap, devs, &count);
+    sparkcap_camera_list_devices(cap, devs, &count);
 
     /* 3. 选指定后端的第一台 */
     int target = -1;
@@ -61,10 +61,10 @@ int main(int argc, char** argv)
 
     /* 4. 打开 → 启动（可带分辨率偏好） */
     sparkcap_device_t* dev = NULL;
-    sparkcap_open(cap, target, &dev);
-    if (sparkcap_start(dev, wantW, wantH, SPARKCAP_PIXFMT_UNKNOWN, 0) != SPARKCAP_ERR_OK) {
+    sparkcap_camera_open(cap, target, &dev);
+    if (sparkcap_camera_start(dev, wantW, wantH, SPARKCAP_PIXFMT_UNKNOWN, 0) != SPARKCAP_ERR_OK) {
         printf("start failed\n");
-        sparkcap_close(dev);
+        sparkcap_camera_close(dev);
         free(devs);
         sparkcap_destroy_backend(cap);
         return 1;
@@ -73,21 +73,21 @@ int main(int argc, char** argv)
     /* 5. 取 5 帧（帧在下一次 get_frame 前有效；跨调用持有用 copy_frame） */
     for (int i = 0; i < 5; ++i) {
         sparkcap_frame_t* frame = NULL;
-        if (sparkcap_get_frame(dev, &frame, 5000) != SPARKCAP_ERR_OK)
+        if (sparkcap_camera_get_frame(dev, &frame, 5000) != SPARKCAP_ERR_OK)
             break;
         printf("frame %dx%d size=%d ts=%lld\n",
                frame->width, frame->height, frame->size, (long long)frame->timestamp);
 
         if (i == 0) {  /* 跨调用持有的正确姿势 */
             sparkcap_frame_t* copy = NULL;
-            if (sparkcap_copy_frame(frame, &copy) == SPARKCAP_ERR_OK)
-                sparkcap_release_frame(copy);
+            if (sparkcap_camera_copy_frame(frame, &copy) == SPARKCAP_ERR_OK)
+                sparkcap_camera_release_frame(copy);
         }
     }
 
     /* 6. 停止 → 关闭 → 销毁 */
-    sparkcap_stop(dev);
-    sparkcap_close(dev);
+    sparkcap_camera_stop(dev);
+    sparkcap_camera_close(dev);
     free(devs);
     sparkcap_destroy_backend(cap);
     return 0;

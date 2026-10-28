@@ -27,9 +27,9 @@ Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优�
 
 ## 硬性规则（违反即 bug）
 
-1. 对外符号一律 `sparkcap_` 前缀 + `SPARKCAP_API` 标注；最终导出面以 `src/sparkcap.def` 白名单为准。
+1. 对外符号 `sparkcap_` 前缀 + `SPARKCAP_API` 标注（两级结构：通用层 `sparkcap_*`、域层 `sparkcap_camera_*`，见命名规范 §2）；最终导出面以 `src/sparkcap.def` 白名单为准。
 2. `av*`、`swr*` 等 FFmpeg 符号不得出现在导出表；libav* 头只在 `src/backend_ffmpeg.cpp` 内部 include。
-3. 帧内存库分配、库释放；应用只经 `sparkcap_copy_frame` / `sparkcap_release_frame` 跨调用持有。
+3. 帧内存库分配、库释放；应用只经 `sparkcap_camera_copy_frame` / `sparkcap_camera_release_frame` 跨调用持有。
 4. 不做隐式像素转换；`pixelFormat` 上报必须与源一致（RGB32 仅当设备原生输出）。
 5. 回调在采集线程执行、须快速返回；回调内禁止 `stop` / `close`（返回 `SPARKCAP_ERR_IN_CALLBACK`），`copy_frame` 允许。
 6. 错误码只用 `sparkcap_err_t` 枚举值，禁止裸数字。

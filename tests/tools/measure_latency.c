@@ -58,14 +58,14 @@ int main(int argc, char** argv)
         return 1;
     }
     int count = 0;
-    sparkcap_list_devices(backend, NULL, &count);
+    sparkcap_camera_list_devices(backend, NULL, &count);
     if (count <= 0) {
         printf("no devices\n");
         sparkcap_destroy_backend(backend);
         return 1;
     }
     sparkcap_device_info_t* devs = calloc(count, sizeof(*devs));
-    sparkcap_list_devices(backend, devs, &count);
+    sparkcap_camera_list_devices(backend, devs, &count);
 
     int target = wantId;
     if (target < 0)
@@ -82,11 +82,11 @@ int main(int argc, char** argv)
     }
 
     sparkcap_device_t* dev = NULL;
-    if (sparkcap_open(backend, target, &dev) != SPARKCAP_ERR_OK ||
-        sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0) != SPARKCAP_ERR_OK)
+    if (sparkcap_camera_open(backend, target, &dev) != SPARKCAP_ERR_OK ||
+        sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0) != SPARKCAP_ERR_OK)
     {
         printf("open/start failed\n");
-        sparkcap_close(dev);
+        sparkcap_camera_close(dev);
         free(devs);
         sparkcap_destroy_backend(backend);
         return 1;
@@ -102,7 +102,7 @@ int main(int argc, char** argv)
     const ULONGLONG t0 = GetTickCount64();
     while (GetTickCount64() - t0 < (ULONGLONG)seconds * 1000 && nFlips < 200) {
         sparkcap_frame_t* f = NULL;
-        if (sparkcap_get_frame(dev, &f, 5000) != SPARKCAP_ERR_OK)
+        if (sparkcap_camera_get_frame(dev, &f, 5000) != SPARKCAP_ERR_OK)
             continue;
         if (frames == 0)
             firstTs = f->timestamp;
@@ -121,8 +121,8 @@ int main(int argc, char** argv)
             lastWhite = white;
         }
     }
-    sparkcap_stop(dev);
-    sparkcap_close(dev);
+    sparkcap_camera_stop(dev);
+    sparkcap_camera_close(dev);
     sparkcap_destroy_backend(backend);
     free(devs);
 

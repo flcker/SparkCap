@@ -18,7 +18,7 @@ public:
     // 重新枚举并重建设备表。两路均失败返回错误；单路失败照常返回另一路结果。
     int refreshDevices();
 
-    // 两段式枚举（Spec F1 / sparkcap_list_devices 语义）：
+    // 两段式枚举（Spec F1 / sparkcap_camera_list_devices 语义）：
     // infos == nullptr 时 *inOutCount 返回总数；
     // 否则写入至多 *inOutCount 项，*inOutCount 更新为实际总数（可能大于写入数）。
     int enumerate(sparkcap_device_info_t* infos, int* inOutCount);

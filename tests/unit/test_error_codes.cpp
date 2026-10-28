@@ -40,9 +40,9 @@ static void case_version_and_null_guards()
 
     sparkcap_backend_t* b = nullptr;
     CHECK_EQ(sparkcap_create_backend(nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_list_devices(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_list_devices(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
     CHECK_EQ(sparkcap_destroy_backend(nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
 }
 
 // 功能集位值 ABI 锁 + 运行时行为（编译期裁剪的可探测性，Spec §4.1）

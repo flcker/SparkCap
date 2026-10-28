@@ -78,12 +78,12 @@ flowchart TD
 
 保留 videoInput 式简单调用：
 
-    sparkcap_list_devices(...)
-    sparkcap_open(deviceId, ...)
-    sparkcap_start(...)
-    sparkcap_get_frame(...) / 回调模式
-    sparkcap_stop(...)
-    sparkcap_close(...)
+    sparkcap_camera_list_devices(...)
+    sparkcap_camera_open(deviceId, ...)
+    sparkcap_camera_start(...)
+    sparkcap_camera_get_frame(...) / 回调模式
+    sparkcap_camera_stop(...)
+    sparkcap_camera_close(...)
 
 帧描述：
 

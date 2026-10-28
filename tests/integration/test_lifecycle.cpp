@@ -10,25 +10,25 @@ static void case_null_args()
     CHECK_EQ(sparkcap_create_backend(nullptr), SPARKCAP_ERR_INVALID_ARG);
 
     sparkcap_backend_t* b = nullptr;
-    CHECK_EQ(sparkcap_list_devices(nullptr, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_list_devices(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_get_formats(nullptr, 0, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_list_devices(nullptr, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_list_devices(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_get_formats(nullptr, 0, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
     CHECK_EQ(sparkcap_destroy_backend(nullptr), SPARKCAP_ERR_INVALID_ARG);
 
     sparkcap_device_t* d = nullptr;
     sparkcap_frame_t* fr = nullptr;
-    CHECK_EQ(sparkcap_open(nullptr, 0, &d), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_stop(nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_get_frame(nullptr, &fr, 100), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_set_frame_callback(nullptr, nullptr, nullptr),
+    CHECK_EQ(sparkcap_camera_open(nullptr, 0, &d), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_stop(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_get_frame(nullptr, &fr, 100), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_set_frame_callback(nullptr, nullptr, nullptr),
              SPARKCAP_ERR_INVALID_ARG);
 
     sparkcap_frame_t f = {};
     sparkcap_frame_t* copy = nullptr;
-    CHECK_EQ(sparkcap_copy_frame(nullptr, &copy), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_copy_frame(&f, nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_release_frame(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_copy_frame(nullptr, &copy), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_copy_frame(&f, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_camera_release_frame(nullptr), SPARKCAP_ERR_INVALID_ARG);
 }
 
 static void case_bad_device_id()  // I10：不存在设备
@@ -40,8 +40,8 @@ static void case_bad_device_id()  // I10：不存在设备
 
     sparkcap_device_t* dev = nullptr;
     int dummyCount = 0;
-    CHECK_EQ(sparkcap_open(backend, 99999, &dev), SPARKCAP_ERR_NOT_FOUND);
-    CHECK_EQ(sparkcap_get_formats(backend, 99999, nullptr, &dummyCount),
+    CHECK_EQ(sparkcap_camera_open(backend, 99999, &dev), SPARKCAP_ERR_NOT_FOUND);
+    CHECK_EQ(sparkcap_camera_get_formats(backend, 99999, nullptr, &dummyCount),
              SPARKCAP_ERR_NOT_FOUND);
 
     sparkcap_destroy_backend(backend);

@@ -3,19 +3,19 @@
 ; 不写 LIBRARY 语句：模块名跟随输出文件（sparkcap.dll / sparkcapd.dll）。
 
 EXPORTS
-    sparkcap_list_devices
-    sparkcap_get_formats
+    sparkcap_camera_list_devices
+    sparkcap_camera_get_formats
     sparkcap_create_backend
-    sparkcap_open
-    sparkcap_set_frame_callback
-    sparkcap_set_error_callback
+    sparkcap_camera_open
+    sparkcap_camera_set_frame_callback
+    sparkcap_camera_set_error_callback
     sparkcap_set_log_callback
-    sparkcap_start
-    sparkcap_get_frame
-    sparkcap_copy_frame
-    sparkcap_release_frame
-    sparkcap_stop
-    sparkcap_close
+    sparkcap_camera_start
+    sparkcap_camera_get_frame
+    sparkcap_camera_copy_frame
+    sparkcap_camera_release_frame
+    sparkcap_camera_stop
+    sparkcap_camera_close
     sparkcap_destroy_backend
     sparkcap_version
     sparkcap_query_features

@@ -18,12 +18,12 @@
 static bool runOneRound(sparkcap_backend_t* backend, sparkcap_backend_kind_t kind, int frames)
 {
     int count = 0;
-    if (sparkcap_list_devices(backend, nullptr, &count) != SPARKCAP_ERR_OK || count <= 0)
+    if (sparkcap_camera_list_devices(backend, nullptr, &count) != SPARKCAP_ERR_OK || count <= 0)
         return true;  // 无设备不算失败（环境差异）
 
     std::string buf(static_cast<size_t>(count) * sizeof(sparkcap_device_info_t), '\0');
     auto* infos = reinterpret_cast<sparkcap_device_info_t*>(buf.data());
-    if (sparkcap_list_devices(backend, infos, &count) != SPARKCAP_ERR_OK)
+    if (sparkcap_camera_list_devices(backend, infos, &count) != SPARKCAP_ERR_OK)
         return false;
 
     int target = -1;
@@ -36,31 +36,31 @@ static bool runOneRound(sparkcap_backend_t* backend, sparkcap_backend_kind_t kin
         return true;  // 该后端无设备
 
     sparkcap_device_t* dev = nullptr;
-    if (sparkcap_open(backend, target, &dev) != SPARKCAP_ERR_OK) {
+    if (sparkcap_camera_open(backend, target, &dev) != SPARKCAP_ERR_OK) {
         // RTSP 依赖外部流服务（长稳环境非受控项，专项已由 S1/S2 覆盖）：
         // open/start 失败按 SKIP 计（该轮成功返回，不进失败计数）
         return kind == SPARKCAP_BACKEND_FFMPEG;
     }
 
     bool ok = true;
-    if (sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0) == SPARKCAP_ERR_OK) {
+    if (sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0) == SPARKCAP_ERR_OK) {
         int got = 0;
         for (int i = 0; i < frames; ++i) {
             sparkcap_frame_t* f = nullptr;
-            if (sparkcap_get_frame(dev, &f, 10000) != SPARKCAP_ERR_OK) {
+            if (sparkcap_camera_get_frame(dev, &f, 10000) != SPARKCAP_ERR_OK) {
                 ok = false;
                 break;
             }
             ++got;
         }
-        sparkcap_stop(dev);
+        sparkcap_camera_stop(dev);
         if (got < frames)
             ok = false;
     } else {
         // start 失败：RTSP 为流服务未起（SKIP）；本地后端为真实故障（FAIL）
         ok = kind == SPARKCAP_BACKEND_FFMPEG;
     }
-    sparkcap_close(dev);
+    sparkcap_camera_close(dev);
     return ok;
 }
 

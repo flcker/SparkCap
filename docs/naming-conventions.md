@@ -11,17 +11,20 @@
 
 ## 2. 总则（红线）
 
-1. 对外 C 符号一律以 `sparkcap_` 为前缀，全小写下划线分隔。
+1. 对外 C 符号以 `sparkcap_` 为前缀，全小写下划线分隔。**两级前缀结构**（多域架构，技术选型 §10.2）：
+   - 跨域通用层（backend/version/features/log）：`sparkcap_<动词>_<名词>`
+   - 域操作层：`sparkcap_<域>_<动词>_<名词>`，摄像头域为 `sparkcap_camera_*`；v2 落地 `sparkcap_audio_*` / `sparkcap_screen_*`
 2. 内部 C++ 类/结构以 `SparkCap` 为前缀，采用 PascalCase。
 3. 导出宏统一为 `SPARKCAP_API`，禁止散用 `__declspec(dllexport)`。
 4. 静态内嵌 FFmpeg 后，`av*`、`swr*` 等符号**不得**出现在导出表中。
 5. 禁止使用 `Capture`、`Device`、`Frame` 等无前缀的裸名导出。
+6. 类型名不带域前缀（`sparkcap_frame_t` 等为库级类型，跨域复用——屏幕域复用视频帧结构；类型不进导出表，域专属化可后置）。
 
 ## 3. C 门面命名
 
 | 类别 | 规则 | 示例 |
 |---|---|---|
-| 函数 | `sparkcap_<动词>_<名词>` | `sparkcap_open`、`sparkcap_get_frame` |
+| 函数 | `sparkcap_<动词>_<名词>` | `sparkcap_camera_open`、`sparkcap_camera_get_frame` |
 | 句柄 | `sparkcap_<名词>_t` | `sparkcap_backend_t`、`sparkcap_device_t` |
 | 枚举 | `sparkcap_<名词>_t`，值 `SPARKCAP_<枚举>_<项>` | `SPARKCAP_PIXFMT_NV12` |
 | 错误码 | `SPARKCAP_ERR_<原因>` | `SPARKCAP_ERR_TIMEOUT` |

@@ -125,7 +125,7 @@ int sparkcap_destroy_backend(sparkcap_backend_t* backend)
 
 // ---- 枚举（F1）----
 
-int sparkcap_list_devices(sparkcap_backend_t* backend,
+int sparkcap_camera_list_devices(sparkcap_backend_t* backend,
                           sparkcap_device_info_t* infos,
                           int* inOutCount)
 {
@@ -142,7 +142,7 @@ int sparkcap_list_devices(sparkcap_backend_t* backend,
 
 // ---- 能力查询（F11，M1d）----
 
-int sparkcap_get_formats(sparkcap_backend_t* backend, int deviceId,
+int sparkcap_camera_get_formats(sparkcap_backend_t* backend, int deviceId,
                          sparkcap_device_format_t* formats, int* inOutCount)
 {
     if (backend == nullptr || backend->manager == nullptr || inOutCount == nullptr)
@@ -158,7 +158,7 @@ int sparkcap_get_formats(sparkcap_backend_t* backend, int deviceId,
 
 // ---- 会话（F2/F3/F4/F6/F7，M1b：MF 路径）----
 
-int sparkcap_open(sparkcap_backend_t* backend, int deviceId, sparkcap_device_t** outDevice)
+int sparkcap_camera_open(sparkcap_backend_t* backend, int deviceId, sparkcap_device_t** outDevice)
 {
     if (outDevice == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
@@ -197,7 +197,7 @@ int sparkcap_open(sparkcap_backend_t* backend, int deviceId, sparkcap_device_t**
     }
 }
 
-int sparkcap_set_frame_callback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata)
+int sparkcap_camera_set_frame_callback(sparkcap_device_t* device, sparkcap_frame_cb cb, void* userdata)
 {
     if (device == nullptr || cb == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
@@ -212,7 +212,7 @@ int sparkcap_set_frame_callback(sparkcap_device_t* device, sparkcap_frame_cb cb,
     }
 }
 
-int sparkcap_set_error_callback(sparkcap_device_t* device, sparkcap_error_cb cb,
+int sparkcap_camera_set_error_callback(sparkcap_device_t* device, sparkcap_error_cb cb,
                                 void* userdata)
 {
     if (device == nullptr || cb == nullptr)
@@ -239,7 +239,7 @@ int sparkcap_set_log_callback(sparkcap_device_t* device, sparkcap_log_cb cb, voi
     return SPARKCAP_ERR_OK;
 }
 
-int sparkcap_start(sparkcap_device_t* device, int width, int height,
+int sparkcap_camera_start(sparkcap_device_t* device, int width, int height,
                    sparkcap_pixfmt_t fmt, int fps)
 {
     if (device == nullptr)
@@ -255,7 +255,7 @@ int sparkcap_start(sparkcap_device_t* device, int width, int height,
     }
 }
 
-int sparkcap_get_frame(sparkcap_device_t* device, sparkcap_frame_t** outFrame, int timeoutMs)
+int sparkcap_camera_get_frame(sparkcap_device_t* device, sparkcap_frame_t** outFrame, int timeoutMs)
 {
     if (outFrame == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
@@ -277,7 +277,7 @@ int sparkcap_get_frame(sparkcap_device_t* device, sparkcap_frame_t** outFrame, i
     }
 }
 
-int sparkcap_stop(sparkcap_device_t* device)
+int sparkcap_camera_stop(sparkcap_device_t* device)
 {
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
@@ -292,7 +292,7 @@ int sparkcap_stop(sparkcap_device_t* device)
     }
 }
 
-int sparkcap_close(sparkcap_device_t* device)
+int sparkcap_camera_close(sparkcap_device_t* device)
 {
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
@@ -311,7 +311,7 @@ int sparkcap_close(sparkcap_device_t* device)
 
 // ---- 帧拷贝（Spec §4.3-3）----
 
-int sparkcap_copy_frame(const sparkcap_frame_t* src, sparkcap_frame_t** outCopy)
+int sparkcap_camera_copy_frame(const sparkcap_frame_t* src, sparkcap_frame_t** outCopy)
 {
     if (outCopy == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
@@ -333,7 +333,7 @@ int sparkcap_copy_frame(const sparkcap_frame_t* src, sparkcap_frame_t** outCopy)
     return SPARKCAP_ERR_OK;
 }
 
-int sparkcap_release_frame(sparkcap_frame_t* frame)
+int sparkcap_camera_release_frame(sparkcap_frame_t* frame)
 {
     if (frame == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;

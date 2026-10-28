@@ -34,13 +34,13 @@ CMake：
 调用顺序（spec §4.5）：
 
     sparkcap_create_backend
-      → sparkcap_list_devices
-      → sparkcap_get_formats（可选，选格式用）
-      → sparkcap_open
-      → sparkcap_set_frame_callback（可选，须在 start 前）
-      → sparkcap_start
-      → sparkcap_get_frame / 回调
-      → sparkcap_stop → sparkcap_close → sparkcap_destroy_backend
+      → sparkcap_camera_list_devices
+      → sparkcap_camera_get_formats（可选，选格式用）
+      → sparkcap_camera_open
+      → sparkcap_camera_set_frame_callback（可选，须在 start 前）
+      → sparkcap_camera_start
+      → sparkcap_camera_get_frame / 回调
+      → sparkcap_camera_stop → sparkcap_camera_close → sparkcap_destroy_backend
 
 ## 3. 帧数据处理（最容易踩坑的部分）
 
@@ -78,7 +78,7 @@ CMake：
 
     sparkcap_device_format_t fmts[64];
     int n = 64;                                  // 容量
-    sparkcap_get_formats(backend, id, fmts, &n);
+    sparkcap_camera_get_formats(backend, id, fmts, &n);
     // n 现在是总数（可能 > 64！）；已写入的只有 min(64, n) 条
     if (n > 64) n = 64;                          // 遍历前钳制
     for (int i = 0; i < n; ++i) ...

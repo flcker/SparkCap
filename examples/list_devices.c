@@ -47,7 +47,7 @@ int main(void)
     int capacity = 0;
     int count = 0;
     for (int attempt = 0; attempt < 3; ++attempt) {
-        rc = sparkcap_list_devices(backend, NULL, &count);
+        rc = sparkcap_camera_list_devices(backend, NULL, &count);
         if (rc != SPARKCAP_ERR_OK || count <= 0)
             break;
         if (count > capacity) {
@@ -59,13 +59,13 @@ int main(void)
             }
             capacity = count;
         }
-        rc = sparkcap_list_devices(backend, devs, &count);
+        rc = sparkcap_camera_list_devices(backend, devs, &count);
         if (rc == SPARKCAP_ERR_OK && count <= capacity)
             break;
     }
 
     if (rc != SPARKCAP_ERR_OK) {
-        printf("sparkcap_list_devices failed: %d\n", rc);
+        printf("sparkcap_camera_list_devices failed: %d\n", rc);
     } else if (count == 0) {
         printf("no capture devices found\n");
     } else {
@@ -76,13 +76,13 @@ int main(void)
 
             /* 能力（F11）：两段式，打印前 3 条（注意：库会把 in_out_count 更新为总数） */
             int fcount = 0;
-            if (sparkcap_get_formats(backend, devs[i].id, NULL, &fcount) == SPARKCAP_ERR_OK &&
+            if (sparkcap_camera_get_formats(backend, devs[i].id, NULL, &fcount) == SPARKCAP_ERR_OK &&
                 fcount > 0)
             {
                 sparkcap_device_format_t fmts[3];
                 int cap = 3;
                 printf("        formats: %d", fcount);
-                if (sparkcap_get_formats(backend, devs[i].id, fmts, &cap) == SPARKCAP_ERR_OK)
+                if (sparkcap_camera_get_formats(backend, devs[i].id, fmts, &cap) == SPARKCAP_ERR_OK)
                     for (int k = 0; k < 3 && k < cap; ++k)
                         printf("%s %dx%d %s@%d", (k == 0) ? " [" : ",",
                                fmts[k].width, fmts[k].height,

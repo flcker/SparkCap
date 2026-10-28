@@ -25,11 +25,11 @@ const char* backendName(sparkcap_backend_kind_t b)
 int findDevice(sparkcap_backend_t* backend, sparkcap_backend_kind_t kind)
 {
     int count = 0;
-    if (sparkcap_list_devices(backend, nullptr, &count) != SPARKCAP_ERR_OK || count <= 0)
+    if (sparkcap_camera_list_devices(backend, nullptr, &count) != SPARKCAP_ERR_OK || count <= 0)
         return -1;
     std::string buf(static_cast<size_t>(count) * sizeof(sparkcap_device_info_t), '\0');
     auto* infos = reinterpret_cast<sparkcap_device_info_t*>(buf.data());
-    if (sparkcap_list_devices(backend, infos, &count) != SPARKCAP_ERR_OK)
+    if (sparkcap_camera_list_devices(backend, infos, &count) != SPARKCAP_ERR_OK)
         return -1;
     for (int i = 0; i < count; ++i)
         if (infos[i].backend == kind)
@@ -40,11 +40,11 @@ int findDevice(sparkcap_backend_t* backend, sparkcap_backend_kind_t kind)
 void case_session_flow(sparkcap_backend_t* backend, int deviceId)  // I3 + I8 + I9
 {
     sparkcap_device_t* dev = nullptr;
-    CHECK_EQ(sparkcap_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
     if (dev == nullptr)
         return;
 
-    const int startRc = sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0);
+    const int startRc = sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0);
     if (startRc != SPARKCAP_ERR_OK)
         std::printf("    start rc=%d\n", startRc);
     CHECK_EQ(startRc, SPARKCAP_ERR_OK);
@@ -53,7 +53,7 @@ void case_session_flow(sparkcap_backend_t* backend, int deviceId)  // I3 + I8 + 
     int got = 0;
     for (int i = 0; i < 10; ++i) {
         sparkcap_frame_t* f = nullptr;
-        const int rc = sparkcap_get_frame(dev, &f, 5000);
+        const int rc = sparkcap_camera_get_frame(dev, &f, 5000);
         CHECK_EQ(rc, SPARKCAP_ERR_OK);
         if (rc != SPARKCAP_ERR_OK)
             break;
@@ -70,22 +70,22 @@ void case_session_flow(sparkcap_backend_t* backend, int deviceId)  // I3 + I8 + 
     CHECK(got >= 5);  // 至少一半帧到手
 
     // I8：stop 后取帧 = STREAM_LOST
-    CHECK_EQ(sparkcap_stop(dev), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_stop(dev), SPARKCAP_ERR_OK);
     sparkcap_frame_t* f = nullptr;
-    CHECK_EQ(sparkcap_get_frame(dev, &f, 200), SPARKCAP_ERR_STREAM_LOST);
+    CHECK_EQ(sparkcap_camera_get_frame(dev, &f, 200), SPARKCAP_ERR_STREAM_LOST);
 
     // 重启再取一帧（start/stop 多次交替，Spec §4.5-2）
-    CHECK_EQ(sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
-    CHECK_EQ(sparkcap_get_frame(dev, &f, 5000), SPARKCAP_ERR_OK);
-    sparkcap_stop(dev);
+    CHECK_EQ(sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_get_frame(dev, &f, 5000), SPARKCAP_ERR_OK);
+    sparkcap_camera_stop(dev);
 
     // I9：close 后一切调用 = INVALID_HANDLE
-    CHECK_EQ(sparkcap_close(dev), SPARKCAP_ERR_OK);
-    CHECK_EQ(sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0),
+    CHECK_EQ(sparkcap_camera_close(dev), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0),
              SPARKCAP_ERR_INVALID_HANDLE);
-    CHECK_EQ(sparkcap_get_frame(dev, &f, 100), SPARKCAP_ERR_INVALID_HANDLE);
-    CHECK_EQ(sparkcap_stop(dev), SPARKCAP_ERR_INVALID_HANDLE);
-    CHECK_EQ(sparkcap_close(dev), SPARKCAP_ERR_INVALID_HANDLE);
+    CHECK_EQ(sparkcap_camera_get_frame(dev, &f, 100), SPARKCAP_ERR_INVALID_HANDLE);
+    CHECK_EQ(sparkcap_camera_stop(dev), SPARKCAP_ERR_INVALID_HANDLE);
+    CHECK_EQ(sparkcap_camera_close(dev), SPARKCAP_ERR_INVALID_HANDLE);
 }
 
 volatile LONG g_cbCount = 0;
@@ -99,9 +99,9 @@ void onFrame(sparkcap_device_t* dev, const sparkcap_frame_t* frame, void* userda
     (void)userdata;
     const LONG n = InterlockedIncrement(&g_cbCount);
     if (n == 1) {  // I7：回调内禁止 stop/close/set_callback
-        g_cbStopRc = sparkcap_stop(dev);
-        g_cbCloseRc = sparkcap_close(dev);
-        g_cbSetCbRc = sparkcap_set_frame_callback(dev, onFrame, nullptr);
+        g_cbStopRc = sparkcap_camera_stop(dev);
+        g_cbCloseRc = sparkcap_camera_close(dev);
+        g_cbSetCbRc = sparkcap_camera_set_frame_callback(dev, onFrame, nullptr);
     }
 }
 
@@ -111,71 +111,71 @@ void case_callback(sparkcap_backend_t* backend, int deviceId)  // I6 + I7
     g_cbStopRc = g_cbCloseRc = g_cbSetCbRc = 0;
 
     sparkcap_device_t* dev = nullptr;
-    CHECK_EQ(sparkcap_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
     if (dev == nullptr)
         return;
-    CHECK_EQ(sparkcap_set_frame_callback(dev, onFrame, nullptr), SPARKCAP_ERR_OK);
-    CHECK_EQ(sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_set_frame_callback(dev, onFrame, nullptr), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
 
     for (int i = 0; i < 1500 && g_cbCount < 100; ++i)  // 15s 窗口（虚拟摄像头空闲态 ~10fps）
         Sleep(10);
-    sparkcap_stop(dev);
+    sparkcap_camera_stop(dev);
 
     CHECK(g_cbCount >= 90);               // I6：回调持续交付
     CHECK_EQ((int)g_cbStopRc, (int)SPARKCAP_ERR_IN_CALLBACK);   // I7：Spec §4.4-5
     CHECK_EQ((int)g_cbCloseRc, (int)SPARKCAP_ERR_IN_CALLBACK);  // 同上
     CHECK_EQ((int)g_cbSetCbRc, (int)SPARKCAP_ERR_IN_CALLBACK);
-    sparkcap_close(dev);
+    sparkcap_camera_close(dev);
 }
 
 void case_preference(sparkcap_backend_t* backend, int deviceId)  // I11
 {
     int fcount = 0;
-    if (sparkcap_get_formats(backend, deviceId, nullptr, &fcount) != SPARKCAP_ERR_OK ||
+    if (sparkcap_camera_get_formats(backend, deviceId, nullptr, &fcount) != SPARKCAP_ERR_OK ||
         fcount <= 0) {
         std::printf("  [SKIP] preference（无能力表）\n");
         return;
     }
     std::string buf(static_cast<size_t>(fcount) * sizeof(sparkcap_device_format_t), '\0');
     auto* fmts = reinterpret_cast<sparkcap_device_format_t*>(buf.data());
-    CHECK_EQ(sparkcap_get_formats(backend, deviceId, fmts, &fcount), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_get_formats(backend, deviceId, fmts, &fcount), SPARKCAP_ERR_OK);
 
     sparkcap_device_t* dev = nullptr;
-    CHECK_EQ(sparkcap_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
     if (dev == nullptr)
         return;
-    CHECK_EQ(sparkcap_start(dev, fmts[0].width, fmts[0].height,
+    CHECK_EQ(sparkcap_camera_start(dev, fmts[0].width, fmts[0].height,
                             SPARKCAP_PIXFMT_UNKNOWN, 0),
              SPARKCAP_ERR_OK);
     sparkcap_frame_t* f = nullptr;
-    CHECK_EQ(sparkcap_get_frame(dev, &f, 5000), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_get_frame(dev, &f, 5000), SPARKCAP_ERR_OK);
     if (f != nullptr) {
         CHECK_EQ(f->width, fmts[0].width);   // 偏好精确生效
         CHECK_EQ(f->height, fmts[0].height);
     }
-    sparkcap_stop(dev);
-    sparkcap_close(dev);
+    sparkcap_camera_stop(dev);
+    sparkcap_camera_close(dev);
 }
 
 void case_continuity(sparkcap_backend_t* backend, int deviceId)  // I13 / N2
 {
     sparkcap_device_t* dev = nullptr;
-    CHECK_EQ(sparkcap_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_open(backend, deviceId, &dev), SPARKCAP_ERR_OK);
     if (dev == nullptr)
         return;
-    CHECK_EQ(sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0), SPARKCAP_ERR_OK);
 
     const int N = 50;
     int64_t ts[50];
     int got = 0;
     for (int i = 0; i < N; ++i) {
         sparkcap_frame_t* f = nullptr;
-        if (sparkcap_get_frame(dev, &f, 5000) != SPARKCAP_ERR_OK)
+        if (sparkcap_camera_get_frame(dev, &f, 5000) != SPARKCAP_ERR_OK)
             break;
         ts[got++] = f->timestamp;
     }
-    sparkcap_stop(dev);
-    sparkcap_close(dev);
+    sparkcap_camera_stop(dev);
+    sparkcap_camera_close(dev);
 
     if (got < N) {
         std::printf("  [SKIP] continuity（仅取到 %d/%d 帧）\n", got, N);

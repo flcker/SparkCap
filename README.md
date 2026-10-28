@@ -47,46 +47,46 @@ int main(void)
 
     /* 两段式枚举 */
     int count = 0;
-    sparkcap_list_devices(backend, NULL, &count);
+    sparkcap_camera_list_devices(backend, NULL, &count);
     sparkcap_device_info_t* devs = malloc(sizeof(*devs) * count);
-    sparkcap_list_devices(backend, devs, &count);
+    sparkcap_camera_list_devices(backend, devs, &count);
     for (int i = 0; i < count; ++i)
         printf("[%d] %s (%s)\n", devs[i].id, devs[i].name, devs[i].path);
 
     /* 打开第一台并取帧 */
     sparkcap_device_t* dev = NULL;
-    sparkcap_open(backend, devs[0].id, &dev);
-    sparkcap_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0);  /* 自动 */
+    sparkcap_camera_open(backend, devs[0].id, &dev);
+    sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0);  /* 自动 */
 
     sparkcap_frame_t* frame = NULL;
-    if (sparkcap_get_frame(dev, &frame, 1000) == SPARKCAP_ERR_OK) {
+    if (sparkcap_camera_get_frame(dev, &frame, 1000) == SPARKCAP_ERR_OK) {
         /* frame->data / width / height / pixelFormat / stride */
     }
 
-    sparkcap_stop(dev);
-    sparkcap_close(dev);
+    sparkcap_camera_stop(dev);
+    sparkcap_camera_close(dev);
     sparkcap_destroy_backend(backend);
     free(devs);
     return 0;
 }
 ```
 
-回调模式：在 `sparkcap_start` 前调用 `sparkcap_set_frame_callback` 注册回调，帧在回调期间有效，跨线程持有须 `sparkcap_copy_frame`。
+回调模式：在 `sparkcap_camera_start` 前调用 `sparkcap_camera_set_frame_callback` 注册回调，帧在回调期间有效，跨线程持有须 `sparkcap_camera_copy_frame`。
 
 ## API 概览
 
 | 函数 | 说明 |
 |---|---|
-| `sparkcap_list_devices` | 枚举设备（两段式） |
-| `sparkcap_get_formats` | 查询设备能力（分辨率/格式/帧率，两段式） |
+| `sparkcap_camera_list_devices` | 枚举设备（两段式） |
+| `sparkcap_camera_get_formats` | 查询设备能力（分辨率/格式/帧率，两段式） |
 | `sparkcap_create_backend` / `sparkcap_destroy_backend` | 后端实例生命周期 |
-| `sparkcap_open` / `sparkcap_close` | 设备生命周期 |
-| `sparkcap_set_frame_callback` | 注册帧回调（start 前） |
-| `sparkcap_set_error_callback` | 注册流断错误回调（start 前） |
+| `sparkcap_camera_open` / `sparkcap_camera_close` | 设备生命周期 |
+| `sparkcap_camera_set_frame_callback` | 注册帧回调（start 前） |
+| `sparkcap_camera_set_error_callback` | 注册流断错误回调（start 前） |
 | `sparkcap_set_log_callback` | 注册日志回调（进程级，FFmpeg av_log 路由） |
-| `sparkcap_start` / `sparkcap_stop` | 采集控制 |
-| `sparkcap_get_frame` | 拉取一帧（带超时） |
-| `sparkcap_copy_frame` / `sparkcap_release_frame` | 帧深拷贝与释放 |
+| `sparkcap_camera_start` / `sparkcap_camera_stop` | 采集控制 |
+| `sparkcap_camera_get_frame` | 拉取一帧（带超时） |
+| `sparkcap_camera_copy_frame` / `sparkcap_camera_release_frame` | 帧深拷贝与释放 |
 | `sparkcap_version` | 版本字符串 |
 
 ## 文档
