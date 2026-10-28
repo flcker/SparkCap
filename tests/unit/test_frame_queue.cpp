@@ -2,7 +2,7 @@
 
 #include "../test_macros.h"
 
-#include "frame_queue.h"
+#include "common/frame_queue.h"
 
 #include <string>
 

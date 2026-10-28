@@ -1,7 +1,10 @@
-// SparkCap 内部：采集后端抽象与会话（src/ 私有头，不入 include/）。
+// SparkCap 内部：采集后端抽象与会话（src/camera/ 私有头，不入 include/）。
 // 命名规范 §4：抽象接口保留 I 前缀；命名空间 sparkcap。
+// 回调守卫与日志路由等跨域设施在 common/capture_common.h。
 
 #pragma once
+
+#include "common/capture_common.h"
 
 #include "sparkcap_types.h"
 
@@ -47,26 +50,6 @@ public:
     virtual int getFrame(sparkcap_frame_t* outFrame, int timeoutMs) = 0;
 
     virtual int stop() = 0;
-};
-
-// 回调上下文守卫（Spec §4.4-5：回调内调用 stop/close 返回 SPARKCAP_ERR_IN_CALLBACK）。
-// 定义在 device_manager.cpp。
-extern thread_local bool g_inFrameCallback;
-
-// 全局日志路由（Spec §4.5）：FFmpeg av_log 等进程级日志源经此转发到应用回调。
-// 定义在 device_manager.cpp。
-struct LogRoute {
-    sparkcap_log_cb cb = nullptr;
-    void* userdata = nullptr;
-};
-extern LogRoute g_logRoute;
-void sparkcapLog(sparkcap_log_level_t level, const char* backend, const char* fmt, ...);
-
-struct CallbackGuard {
-    CallbackGuard() : m_old(g_inFrameCallback) { g_inFrameCallback = true; }
-    ~CallbackGuard() { g_inFrameCallback = m_old; }
-private:
-    bool m_old;
 };
 
 } // namespace sparkcap

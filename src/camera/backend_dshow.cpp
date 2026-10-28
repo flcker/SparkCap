@@ -5,9 +5,9 @@
 // 故 DShow 路径存在一次帧拷贝——兜底后端的取舍，零拷贝属 M2 的 MF/D3D11 路径。
 
 #include "backend_dshow.h"
-#include "frame_queue.h"
-#include "pixfmt_map.h"
-#include "str_util.h"
+#include "common/frame_queue.h"
+#include "common/pixfmt_map.h"
+#include "common/str_util.h"
 
 #include <dshow.h>
 #include "qedit_min.h"  // ISampleGrabber / ISampleGrabberCB（qedit.h 已从新 SDK 移除）

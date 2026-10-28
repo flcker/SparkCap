@@ -5,7 +5,7 @@
 
 #include "sparkcap.h"
 
-#include "device_manager.h"
+#include "camera/device_manager.h"
 
 #include <mfapi.h>
 #include <objbase.h>

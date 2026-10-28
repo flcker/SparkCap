@@ -4,9 +4,9 @@
 //       OnReadSample 持续拉流并保持 buffer Lock，getFrame 返回零拷贝描述。
 
 #include "backend_mf.h"
-#include "frame_queue.h"
-#include "pixfmt_map.h"
-#include "str_util.h"
+#include "common/frame_queue.h"
+#include "common/pixfmt_map.h"
+#include "common/str_util.h"
 
 #include <mfapi.h>
 #include <mfidl.h>

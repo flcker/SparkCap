@@ -6,6 +6,7 @@
 
 ### Changed
 
+- **src/ 按两级结构分目录**：`src/`（门面 facade.cpp + sparkcap.def）+ `src/common/`（跨域设施）+ `src/camera/`（摄像头域）——与 API 两级前缀（sparkcap_ 通用 / sparkcap_camera_ 域）同构，v2 落地 `src/audio/`、`src/screen/` 即纯增量。common 归位清单（v2 域直接复用、不再 include camera 目录）：CallbackGuard/g_inFrameCallback/LogRoute/sparkcapLog（原寄生 capture_backend.h/device_manager.cpp）→ `capture_common.h/.cpp`；frame_queue（音频缓冲队列同构）；str_util；json_config（sparkcap.json 为库级配置资源，按域扩展配置段 §10.2）；pixfmt_map/pixfmt_av（库级 pixfmt 枚举的映射集，屏幕域 DXGI 映射后续加入）。git mv 保留历史；内部结构重组不影响 ABI。验证：全量 12/12、dumpbin 16 符号不变、裁剪版 unit 5/5
 - **摄像头域 API 重命名为 `sparkcap_camera_*` 前缀**（v1.0.0 tag 前的窗口期决策，ABI 级变更）：两级前缀结构——跨域通用层保持 `sparkcap_`（create/destroy_backend、version、query_features、set_log_callback 共 5 个），域操作层 11 个加 `camera_`（list_devices、get_formats、open/close、set_frame/error_callback、start/stop/get_frame、copy/release_frame）。动机：多域（roadmap v2）确定落地，`sparkcap_camera_*` / `sparkcap_audio_*` / `sparkcap_screen_*` 对称族从符号层自文档化域归属；tag 后改名即 2.0 破坏版本，趁唯一下游（SparkCapDemo）联动成本最低时改对。类型名不带域前缀（`sparkcap_frame_t` 等为库级类型，屏幕域将复用视频帧结构；类型不进导出表，域专属化可后置）
 
 ### Added

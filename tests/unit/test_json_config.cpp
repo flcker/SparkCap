@@ -2,7 +2,7 @@
 
 #include "../test_macros.h"
 
-#include "json_config.h"
+#include "common/json_config.h"
 
 #include <cstdio>
 #include <fstream>

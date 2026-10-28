@@ -38,7 +38,9 @@ Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优�
 ## 目录结构
 
     include/            # 公开头（sparkcap.h、sparkcap_types.h，仅此两个）
-    src/                # 实现（facade.cpp、device_manager、backend_*、sparkcap.def 等）
+    src/                # 门面（facade.cpp、sparkcap.def）
+      common/           # 跨域设施（回调守卫、日志路由、环形队列、宽字符转换、json 配置加载、像素格式映射集）
+      camera/           # 摄像头域（device_manager、后端抽象、backend_mf/dshow/ffmpeg、qedit_min）
     examples/           # 示例：给接入方抄的最小用法，不做判定（永不因断言失败）
     tests/              # 测试：机器判定 pass/fail（ctest 驱动，回归门禁）
     third_party/ffmpeg/ # 构建脚本与 VERSION（产物不入库，见 FFmpeg 编译指南）

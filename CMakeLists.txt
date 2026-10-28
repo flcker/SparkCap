@@ -21,21 +21,25 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 # ENABLE_VIDEO/AUDIO/SCREEN 随对应域落地引入；当前仅 FFMPEG 可裁剪。
 option(SPARKCAP_ENABLE_FFMPEG "RTSP 网络流后端（FFmpeg + D3D11VA）；OFF 出纯本地采集 DLL" ON)
 
-# ---- 库 ----
+# ---- 库（目录：src/ 门面与导出清单、src/common/ 跨域设施、src/camera/ 摄像头域）----
 set(SPARKCAP_SRC
     src/facade.cpp
-    src/device_manager.cpp
-    src/backend_mf.cpp
-    src/backend_dshow.cpp
+    src/common/capture_common.cpp
+    src/camera/device_manager.cpp
+    src/camera/backend_mf.cpp
+    src/camera/backend_dshow.cpp
 )
 if (SPARKCAP_ENABLE_FFMPEG)
-    list(APPEND SPARKCAP_SRC src/backend_ffmpeg.cpp src/json_config.cpp)
+    list(APPEND SPARKCAP_SRC src/camera/backend_ffmpeg.cpp src/common/json_config.cpp)
 else()
     # 桩：头文件/ABI/导出面不变（枚举无 RTSP 设备），见 backend_ffmpeg_stub.cpp
-    list(APPEND SPARKCAP_SRC src/backend_ffmpeg_stub.cpp)
+    list(APPEND SPARKCAP_SRC src/camera/backend_ffmpeg_stub.cpp)
 endif()
 
 add_library(sparkcap SHARED ${SPARKCAP_SRC})
+
+# src/ 为根的内部 include 基准（"camera/xxx.h" / "common/xxx.h" 跨目录引用）
+target_include_directories(sparkcap PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_include_directories(sparkcap
     PUBLIC

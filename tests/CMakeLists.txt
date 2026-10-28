@@ -6,7 +6,7 @@ set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 
 # ---- unit ----
 
-add_executable(test_unit_json unit/test_json_config.cpp ${SRC_DIR}/json_config.cpp)
+add_executable(test_unit_json unit/test_json_config.cpp ${SRC_DIR}/common/json_config.cpp)
 target_include_directories(test_unit_json PRIVATE ${SRC_DIR} ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(test_unit_json PRIVATE /W4 /WX /utf-8)
 add_test(NAME unit_json COMMAND test_unit_json)

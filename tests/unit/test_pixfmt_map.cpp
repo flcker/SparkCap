@@ -3,9 +3,9 @@
 
 #include "../test_macros.h"
 
-#include "pixfmt_map.h"
+#include "common/pixfmt_map.h"
 #if SPARKCAP_ENABLE_FFMPEG
-#include "pixfmt_av.h"  // AVPixelFormat 映射（FFMPEG 构建才编入）
+#include "common/pixfmt_av.h"  // AVPixelFormat 映射（FFMPEG 构建才编入）
 #endif
 
 static void case_mf_mapping()

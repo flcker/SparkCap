@@ -47,16 +47,24 @@
       include/
         sparkcap.h            # 唯一公开头
         sparkcap_types.h      # 公开类型
-      src/
-        device_manager.cpp
-        backend_mf.cpp
-        backend_dshow.cpp
-        backend_ffmpeg.cpp
-        frame_queue.cpp
+      src/                    # 门面与导出清单
+        facade.cpp
+        sparkcap.def
+        common/               # 跨域通用设施（v2 域直接复用）
+          capture_common.h/.cpp   # 回调守卫、日志路由
+          frame_queue.h           # 环形队列模板
+          str_util.h              # 宽字符转换
+          json_config.*           # sparkcap.json 库级配置加载（按域扩展配置段，§10.2）
+          pixfmt_map.h / pixfmt_av.h  # 像素格式映射集（库级 pixfmt 枚举 ↔ 后端原生格式；屏幕域 DXGI 映射后续加入）
+        camera/               # 摄像头域（v2 落地 audio/ screen/ 同构）
+          device_manager.cpp/.h   # 枚举合并去重
+          capture_backend.h       # 域后端抽象（ICaptureBackend/Session）
+          backend_mf.* / backend_dshow.* / backend_ffmpeg.* / backend_ffmpeg_stub.cpp
+          qedit_min.h             # ISampleGrabber 最小声明（DShow 专属）
       third_party/
         ffmpeg/               # 静态库与头，不入导出
 
-规则：对外头文件只放 `include/`，其余实现头一律 `src/` 私有。
+规则：对外头文件只放 `include/`，其余实现头一律 `src/` 私有；目录按两级结构（common + 域目录）组织，与 API 前缀层级一致；include 以 `src/` 为基准（`"camera/xxx.h"`、`"common/xxx.h"`）。
 
 ## 6. 导出控制
 

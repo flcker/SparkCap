@@ -4,8 +4,8 @@
 // D3D11VA 硬解随 M4（技术选型 §6：不可用时回落本路径）。
 
 #include "backend_ffmpeg.h"
-#include "frame_queue.h"
-#include "pixfmt_av.h"
+#include "common/frame_queue.h"
+#include "common/pixfmt_av.h"
 
 // libav 顶层头自带 extern "C"，但子头（time.h 等）单独包含无保护——统一外裹
 extern "C" {

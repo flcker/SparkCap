@@ -4,7 +4,7 @@
 // 条件编译逻辑全部在 CMakeLists（源文件替换），其余源码零 #if。
 
 #include "backend_ffmpeg.h"
-#include "json_config.h"
+#include "common/json_config.h"
 
 #include <windows.h>  // GetFileAttributesA（sparkcap.json 存在性检测）
 
