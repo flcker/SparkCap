@@ -25,9 +25,11 @@ M1–M4 全部交付（12/12 测试全绿）。验收进展：
 
 ### 屏幕抓屏域（先行，落地中：feature/screen 分支）
 
-- 首版范围：**显示器整屏捕获**（DXGI Desktop Duplication）；窗口捕获（Windows.Graphics.Capture，Win10 1903+）、GDI 兜底、光标合成、dirty rects 暴露为后置项
-- 设计已定（技术选型 §10.5 + Spec v1.3，F12–F15）：并行新入口 `sparkcap_screen_list_displays`（8 符号 API 族，导出 16 → 24）、静止桌面 TIMEOUT 正常语义（F14，音频域静默期的同构先例）、ACCESS_LOST 自动重建（F15）、帧结构/帧回调/帧工具（通用层 copy/release）复用视频域
-- 实现路径：`src/screen/backend_dxgi.*`；`SPARKCAP_FEATURE_SCREEN` 功能位 + `SPARKCAP_ENABLE_SCREEN` option（默认 ON）
+- 首版范围：**显示器整屏 + 窗口捕获合并为 screen 域**（目标类型分叉 open，会话层全同构）
+- 双降级链（技术选型 §10.5）：显示器 DXGI→GDI BitBlt；窗口 WGC（Win10 1903+）→GDI PrintWindow(RENDERFULLCONTENT)；start 时主后端失败自动回落
+- 设计已定（Spec v1.4，F12–F20）：10 符号 API 族（导出 16 → 26）、fps 会话层节流（F18）、窗口状态契约（F19：最小化 SOURCE_PAUSED/关闭 STREAM_LOST/resize 帧跟随）、帧唯一性不保证契约（F14：事件驱动 TIMEOUT vs GDI 轮询重复帧）
+- 实现路径：`src/screen/`{backend_dxgi, backend_wgc, backend_gdi}；`SPARKCAP_FEATURE_SCREEN` 功能位 + `SPARKCAP_ENABLE_SCREEN` option（默认 ON）
+- 后置项：光标合成、dirty rects 暴露
 
 ### 音频域（后续）
 
