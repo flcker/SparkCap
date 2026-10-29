@@ -1,7 +1,7 @@
 # SparkCap 规格说明（Spec）
 
-- 版本：1.2（摄像头域 API 加 `sparkcap_camera_` 域前缀，两级前缀结构见命名规范 §2）
-- 日期：2026-10-28
+- 版本：1.3（屏幕域 API 契约新增：`sparkcap_screen_*` 8 符号，DXGI Desktop Duplication，技术选型 §10.5）
+- 日期：2026-10-29
 - 状态：待评审
 - 关联文档：design.md
 
@@ -35,6 +35,10 @@
 | F9 | 原始格式保真 | 不隐式转换 | 上报格式与源一致 |
 | F10 | 断流重连 | RTSP 断开自动重连 | 重连成功并恢复取帧 |
 | F11 | 能力查询 | 按 deviceId 查询设备支持的分辨率/格式/帧率组合 | 与设备实际能力一致 |
+| F12 | 显示器枚举 | 返回显示器列表（名称/当前分辨率/主屏标记），两段式 | 含虚拟显示器，多屏各自独立条目 |
+| F13 | 打开显示器 | 按 displayId 打开 Desktop Duplication 会话 | 同屏第二会话返回 DEVICE_BUSY（系统单实例限制） |
+| F14 | 屏幕取帧 | 桌面内容变化即出帧（BGRA/RGB32，原生分辨率）；静止桌面 `get_frame` 返回 TIMEOUT 为**正常语义**（非错误） | 变化时持续出帧，静止期 TIMEOUT |
+| F15 | 模式切换恢复 | 显示模式切换/独占全屏/TDR 触发 ACCESS_LOST：错误回调通知 + 自动重建 duplication | 切换后恢复取帧 |
 
 ## 4. 接口契约
 
@@ -56,6 +60,14 @@
 | sparkcap_camera_get_frame | 拉取一帧 |
 | sparkcap_camera_stop | 停止采集 |
 | sparkcap_camera_close | 关闭设备 |
+| sparkcap_screen_list_displays | 枚举显示器（两段式，`sparkcap_display_info_t`） |
+| sparkcap_screen_open | 打开显示器 duplication 会话（同屏第二会话 DEVICE_BUSY） |
+| sparkcap_screen_set_frame_callback | 注册帧回调（start 前；类型与帧结构复用视频域） |
+| sparkcap_screen_set_error_callback | 注册错误回调（ACCESS_LOST 等，start 前） |
+| sparkcap_screen_start | 启动捕获——**无偏好参数**（分辨率/格式由显示器决定：原生分辨率、BGRA 固定） |
+| sparkcap_screen_get_frame | 拉取一帧（静止桌面 TIMEOUT 为正常语义） |
+| sparkcap_screen_stop | 停止捕获 |
+| sparkcap_screen_close | 关闭会话 |
 | sparkcap_copy_frame | 深拷贝一帧 |
 | sparkcap_release_frame | 释放帧 |
 
@@ -186,4 +198,4 @@ JSON 示例：
 4. 许可合规结论（工程侧已选 LGPL-3.0 + 依赖声明 NOTICE，法务终审待完成）；
 5. 本地设备热插拔（USB 拔出事件通知，MF 侧有 MEVideoCaptureDeviceRemoved 事件可用）；
 6. **N1 延迟口径**（A5 拍屏法实测挂账，2026-10-29）：J.ZAO W4AS 640×480 NV12@30 全链路实测 median 105–113ms（≈3.3 帧），未达"≤2 帧"标准。全链路含屏幕 VSync（估 17–33ms）、设备曝光/读出（估 30–50ms）、USB 传输（估 10–15ms）等库外环节，库内占比未直接测量——待补库内交付延迟测量（帧时间戳→回调触发/get_frame 返回）后再决策：修订 N1 边界为库内交付，或维持全链路口径并按设备分级；
-6. **屏幕抓屏域**（v2 规划）：DXGI Desktop Duplication / Windows.Graphics.Capture 的枚举模型——显示器/窗口不是 UVC 设备，与 `sparkcap_camera_list_devices` 的关系（并列新入口 or 泛化）待定。
+7. **屏幕抓屏域**：首版（v2 落地中，feature/screen 分支）已定——**并列新入口**（`sparkcap_screen_list_displays`，不泛化 camera 的 list_devices，§10.2 API 族即选用模型）+ DXGI Desktop Duplication 单后端（窗口捕获 WGC / GDI 兜底 / 光标合成 / dirty rects 暴露为后置项）；帧结构/帧回调/copy-release 帧工具复用视频域。遗留待确认：窗口捕获枚举模型（窗口列表动态变化，与显示器静态列表的 API 形态差异）。

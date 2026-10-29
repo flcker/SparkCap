@@ -23,22 +23,22 @@ M1–M4 全部交付（12/12 测试全绿）。验收进展：
 
 ## v2.0：多域扩展
 
-### 音频域（优先级最高）
+### 屏幕抓屏域（先行，落地中：feature/screen 分支）
+
+- 首版范围：**显示器整屏捕获**（DXGI Desktop Duplication）；窗口捕获（Windows.Graphics.Capture，Win10 1903+）、GDI 兜底、光标合成、dirty rects 暴露为后置项
+- 设计已定（技术选型 §10.5 + Spec v1.3，F12–F15）：并行新入口 `sparkcap_screen_list_displays`（8 符号 API 族，导出 16 → 24）、静止桌面 TIMEOUT 正常语义（F14，音频域静默期的同构先例）、ACCESS_LOST 自动重建（F15）、帧结构/帧回调/帧工具（通用层 copy/release）复用视频域
+- 实现路径：`src/screen/backend_dxgi.*`；`SPARKCAP_FEATURE_SCREEN` 功能位 + `SPARKCAP_ENABLE_SCREEN` option（默认 ON）
+
+### 音频域（后续）
 
 - **麦克风**（WASAPI capture）+ **扬声器回采**（loopback，采集电脑播放的声音）
 - 新 API 族 `sparkcap_audio_*`：音频帧结构与视频 frame_t 不兼容，独立帧结构与生命周期
 - 关键设计输入（技术选型 §10.3）：
   - 枚举条目带 kind（capture / loopback；loopback 枚举 eRender 输出端点）
-  - 静默期语义契约化（无播放时 TIMEOUT or 补零帧）
+  - 静默期语义契约化（无播放时 TIMEOUT or 补零帧——屏幕域"静止桌面 TIMEOUT"为同构先例，Spec F14）
   - 格式跟随（loopback 格式由系统混音器决定，中途变化 → 重协商/通知）
   - A/V 统一时钟域（与视频帧时间戳同源，录制/推流直接对齐）
 - 回调/错误/日志路由复用现有机制
-
-### 屏幕抓屏域
-
-- DXGI Desktop Duplication（桌面）+ Windows.Graphics.Capture（窗口，Win10 1903+）
-- 枚举模型待定（显示器/窗口不是 UVC 设备，与 list_devices 的关系，Spec §9-6）
-- 帧可直接套用视频 frame_t（BGRA）
 
 ### 组合场景（单库的回报）
 

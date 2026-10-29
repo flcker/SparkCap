@@ -191,3 +191,26 @@ loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；�
 - **默认全开**：官方发布物 = 全功能单 DLL，生态只有一个标准产物（变体由自建者按需触发）
 - 自建者裁剪：`FFMPEG=OFF` 出 **182KB** 纯本地采集 DLL（实测，全功能 3.7MB 的 4.7%；ws2_32 等 FFmpeg 系统依赖一并消失，依赖仅剩 5 个系统 DLL；15 个导出符号与 ABI 不变，实现方式为 CMake 源文件替换 `backend_ffmpeg_stub.cpp`，库代码零 `#if`，libav 头依赖隔离在 `src/pixfmt_av.h`）
 - 三条纪律：头文件全量声明不变（未启用域运行时返回 `SPARKCAP_ERR_UNSUPPORTED`，ABI 不裂）；未来域 API 符号落地时 `.def` 按启用域拼接；CI 全功能跑全量 + 代表变体（FFMPEG=OFF）跑编译与单测，不做 2ⁿ 组合
+
+### 10.5 屏幕域落地设计（v2 首域，Spec v1.3）
+
+第一个多域扩展域，同时是 §10 架构的验证用例：并行入口、独立 API 族、复用通用设施。
+
+**范围（首版）**：显示器整屏捕获。窗口捕获（Windows.Graphics.Capture，Win10 1903+）与 GDI BitBlt 兜底后置——WGC 是 WinRT COM 直调 + 黄色边框/权限策略，先把显示器路径闭环；GDI 兜底等 DXGI 不可用的真实场景出现再引入。
+
+**选型论证**：
+
+- **DXGI Desktop Duplication**（Win8+，目标平台 Win10/11 全覆盖）：GPU 级复制零 CPU 采样，帧率跟随桌面合成；输出 B8G8R8A8 → `SPARKCAP_PIXFMT_RGB32`（F9 保真：桌面原生即 BGRA）
+- 系统限制契约化（Spec F13/F15）：同一 output 同时仅一个 duplication 会话（第二个 open 返回 `DEVICE_BUSY`）；显示模式切换/独占全屏/TDR 触发 `DXGI_ERROR_ACCESS_LOST`（错误回调通知 + 自动重建，对齐 RTSP 断流重连哲学 §M4b）；安全桌面（UAC 提权/锁屏）不可用
+- 新增系统依赖仅 dxgi/d3d11（零第三方）
+
+**语义契约（与摄像头域的关键差异，Spec 已契约化）**：
+
+1. **静止桌面 = TIMEOUT**：`AcquireNextFrame` 事件驱动，桌面无变化则无新帧——`get_frame` 返回 TIMEOUT 是正常行为而非错误（与 §10.3-2 loopback 静默期同构，录制/推流下游按"无新内容"处理）
+2. **分辨率/格式不可协商**：显示器原生分辨率、BGRA 固定——`start` 无偏好参数（签名 `sparkcap_screen_start(device)`，videoInput 简单直接风格）
+3. **帧不含鼠标光标**：DXGI 光标层独立于桌面纹理，首版不合成（后置选项）
+4. **dirty rects 不暴露**：整帧交付（完整 BGRA），脏区优化后置
+
+**API 族（8 符号，导出 16 → 24）**：`sparkcap_screen_list_displays / open / set_frame_callback / set_error_callback / start / get_frame / stop / close`。帧回调类型（`sparkcap_frame_cb`）、帧结构（`sparkcap_frame_t`）、帧工具（`sparkcap_copy_frame` / `sparkcap_release_frame`，通用层）直接复用——接口面整理（帧工具通用层化）的前瞻收益兑现。枚举条目 `sparkcap_display_info_t`（id/name/width/height/is_primary；无 backend 字段——单后端无选择意义，与 camera 条目的 backend 暴露形成对照）。
+
+**实现路径**：`src/screen/backend_dxgi.*`（与 `src/camera/` 同构的域目录）——采集线程 `AcquireNextFrame` → staging texture `Map` 拷出 BGRA（GPU texture 不能直出应用指针）→ 环形队列（复用 `common/frame_queue.h`）→ 回调/拉取双模式（复用 `ICaptureSession` 抽象、CallbackGuard、队列满丢最旧策略）。时间戳 QPC 同源（A/V 时钟域前提）。`SPARKCAP_FEATURE_SCREEN = (1 << 2)` 功能位 + `SPARKCAP_ENABLE_SCREEN` CMake option（落地即默认 ON，对齐 §10.4 默认全开）。
