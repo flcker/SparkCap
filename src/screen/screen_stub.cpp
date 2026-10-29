@@ -1,9 +1,10 @@
 // SCREEN=OFF 编译期裁剪桩（技术选型 §10.4）。
-// 头文件、导出面、ABI 均不变：list_displays 返回空计数（无显示器可枚举），
-// 其余操作 UNSUPPORTED。条件编译逻辑全部在 CMakeLists（源文件替换），
-// 库代码零 #if（唯二例外：facade 的 query_features 与单测的功能位断言）。
+// 头文件、导出面、ABI 均不变：list_displays / list_windows 返回空计数
+// （无显示器/窗口可枚举），其余操作 UNSUPPORTED。条件编译逻辑全部在
+// CMakeLists（源文件替换），库代码零 #if（唯二例外：facade 的 query_features
+// 与单测的功能位断言）。
 
-#include "backend_dxgi.h"
+#include "screen_session.h"
 
 #include <utility>
 
@@ -14,7 +15,17 @@ int screenListDisplays(std::vector<sparkcap_display_info_t>&)
     return SPARKCAP_ERR_OK;  // 空：编译期无屏幕域
 }
 
-int screenOpenSession(int, std::unique_ptr<SparkCapScreenSession>* out)
+int screenListWindows(std::vector<sparkcap_window_info_t>&)
+{
+    return SPARKCAP_ERR_OK;  // 空：编译期无屏幕域
+}
+
+bool screenLocateDisplay(int, wchar_t[32], RECT*, int*, int*)
+{
+    return false;
+}
+
+int screenOpenSession(const ScreenTarget&, std::unique_ptr<SparkCapScreenSession>* out)
 {
     if (out != nullptr)
         *out = nullptr;
@@ -22,12 +33,8 @@ int screenOpenSession(int, std::unique_ptr<SparkCapScreenSession>* out)
 }
 
 // 会话方法桩（不可达：open 已拒绝创建）；stop 幂等（对齐 backend_ffmpeg_stub）
-SparkCapScreenSession::SparkCapScreenSession(int displayId,
-                                             Microsoft::WRL::ComPtr<IDXGIOutput1> output,
-                                             Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter)
-    : m_displayId(displayId)
-    , m_output(std::move(output))
-    , m_adapter(std::move(adapter))
+SparkCapScreenSession::SparkCapScreenSession(ScreenTarget target)
+    : m_target(std::move(target))
 {
 }
 
@@ -35,7 +42,7 @@ SparkCapScreenSession::~SparkCapScreenSession()
 {
 }
 
-int SparkCapScreenSession::start()
+int SparkCapScreenSession::start(int)
 {
     return SPARKCAP_ERR_UNSUPPORTED;
 }
@@ -46,6 +53,11 @@ int SparkCapScreenSession::setCallback(sparkcap_device_t*, sparkcap_frame_cb, vo
 }
 
 int SparkCapScreenSession::setErrorCallback(sparkcap_device_t*, sparkcap_error_cb, void*)
+{
+    return SPARKCAP_ERR_UNSUPPORTED;
+}
+
+int SparkCapScreenSession::setOptions(uint32_t)
 {
     return SPARKCAP_ERR_UNSUPPORTED;
 }

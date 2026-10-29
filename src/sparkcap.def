@@ -19,9 +19,12 @@ EXPORTS
     sparkcap_camera_stop
     sparkcap_camera_close
     sparkcap_screen_list_displays
+    sparkcap_screen_list_windows
     sparkcap_screen_open
+    sparkcap_screen_open_window
     sparkcap_screen_set_frame_callback
     sparkcap_screen_set_error_callback
+    sparkcap_screen_set_options
     sparkcap_screen_start
     sparkcap_screen_get_frame
     sparkcap_screen_stop

@@ -207,16 +207,25 @@ loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；�
 
 - **WGC 覆盖面**：DWM 合成层对渲染技术不敏感（Win32/UWP/Electron/Qt/D3D/OpenGL/Vulkan 窗口化全兼容）；PrintWindow+RENDERFULLCONTENT 同样直取 DWM 内容，硬件加速窗口大部分兼容
 - **GDI 后端如实限制**：CPU 拷贝（4K 帧 ~33MB）；旧 BitBlt 仅 GDI 窗口（仅作最后手段）
-- **系统边界（库不绕过）**：管理员权限窗口需捕获进程同权限（UIPI）；最小化窗口 DWM 不合成；全屏独占游戏 DWM 不参与；Win10 捕获期间系统黄框（防偷拍，Win11 默认无）
+- **系统边界（库不绕过）**：管理员权限窗口需捕获进程同权限（UIPI）；最小化窗口 DWM 不合成；全屏独占游戏 DWM 不参与；系统黄框（防偷拍）——Win11 经 `IsBorderRequired=false` 官方 API 关闭（本库默认尽力关闭，F21 矩阵），Win10 仅系统级注册表可关（库不实现，如实保留黄框）
 
-**语义契约（与摄像头域的关键差异，Spec F14/F18/F19 契约化）**：
+**语义契约（与摄像头域的关键差异，Spec F14/F18/F19/F21 契约化）**：
 
 1. **帧唯一性不保证**：事件驱动后端（DXGI/WGC）静止时 `get_frame` 返回 TIMEOUT；轮询后端（GDI）定时交付重复帧——应用不假设帧的唯一性（预览无感，录制端重复帧=恒定帧率，均天然兼容）
 2. **分辨率/格式不可协商**：目标原生尺寸、BGRA 固定；**fps 可限速**——`start(device, fps)`，fps>0 会话层统一节流（入队前时间戳判断，后端无关；不依赖 WGC MinUpdateInterval——其需 Win11）
 3. **窗口状态契约**（会话层轮询 `IsIconic`/`IsWindow`，三后端行为统一）：最小化 → 错误回调 `SOURCE_PAUSED`（错误码 13）一次 + get_frame 返回 TIMEOUT（不补黑帧不补假帧），还原自动恢复（不通知，帧恢复交付即恢复）；关闭 → `STREAM_LOST`；resize → 帧尺寸跟随
-4. **帧不含鼠标光标**：光标层独立于桌面纹理，首版不合成（后置选项）
-5. **dirty rects 不暴露**：整帧交付（完整 BGRA），脏区优化后置
+4. **光标与边框可配置（best-effort，F21）**：`set_options(device, options)`，会话级、start 前设置；默认 0 = 帧不含光标 + 尽力关闭系统提示边框。**不报错原则**：不支持的后端/系统组合静默降级到该后端天然行为，接入方按矩阵设计而非靠返回码探测；未知位忽略（位掩码前向兼容）
 
-**API 族（10 符号，导出 16 → 26）**：`sparkcap_screen_list_displays / list_windows / open / open_window / set_frame_callback / set_error_callback / start / get_frame / stop / close`。帧回调类型（`sparkcap_frame_cb`）、帧结构（`sparkcap_frame_t`）、帧工具（`sparkcap_copy_frame` / `sparkcap_release_frame`，通用层）直接复用。枚举条目 `sparkcap_display_info_t`（id/name/width/height/is_primary）与 `sparkcap_window_info_t`（hwnd/title/width/height——窗口列表为枚举时刻快照，open 时已关闭返回 NOT_FOUND）。
+   | 后端/系统 | CURSOR 未设（默认） | CURSOR 设置 | BORDER 未设（默认） | BORDER 设置 |
+   |---|---|---|---|---|
+   | DXGI 显示器 | 不含（天然） | 仍不含（静默） | 无框（天然） | 无框（静默） |
+   | WGC @ Win11 | `IsCursorCaptureEnabled=false` | `=true` | `IsBorderRequired=false`（官方关闭路径） | 不调（系统默认黄框） |
+   | WGC @ Win10 | **仍含光标（接口不存在）** | 含 | **仍黄框（关不掉）** | 黄框 |
+   | GDI 兜底 | 不含（天然） | 仍不含（静默） | 无框（天然） | 无框（静默） |
+
+5. **帧不含鼠标光标为默认**：光标层独立于桌面纹理；WGC 默认把光标画进帧，须显式 `IsCursorCaptureEnabled=false` 对齐 DXGI/GDI 天然行为（上表 CURSOR 默认列）；Win10 上关不掉（接口不存在），属已知行为差异
+6. **dirty rects 不暴露**：整帧交付（完整 BGRA），脏区优化后置
+
+**API 族（11 符号，导出 16 → 27）**：`sparkcap_screen_list_displays / list_windows / open / open_window / set_frame_callback / set_error_callback / set_options / start / get_frame / stop / close`。帧回调类型（`sparkcap_frame_cb`）、帧结构（`sparkcap_frame_t`）、帧工具（`sparkcap_copy_frame` / `sparkcap_release_frame`，通用层）直接复用。枚举条目 `sparkcap_display_info_t`（id/name/width/height/is_primary）与 `sparkcap_window_info_t`（hwnd/title/width/height——窗口列表为枚举时刻快照，open 时已关闭返回 NOT_FOUND）。
 
 **实现路径**：`src/screen/`（与 `src/camera/` 同构的域目录）——`backend_dxgi.*`（显示器主后端：AcquireNextFrame → staging Map 按 RowPitch 逐行拷出 → 立即 ReleaseFrame）、`backend_wgc.*`（窗口主后端：WinRT COM 直调，零 C++/WinRT 包依赖）、`backend_gdi.*`（双目标兜底：BitBlt/PrintWindow 定时轮询）、会话层（目标类型 + 后端选择 + fps 节流 + 窗口状态轮询 + 环形队列复用 `common/frame_queue.h` + CallbackGuard）。时间戳 QPC→100ns 与 camera 域同源（A/V 时钟域前提）。`SPARKCAP_FEATURE_SCREEN = (1 << 2)` 功能位 + `SPARKCAP_ENABLE_SCREEN` CMake option（默认 ON，对齐 §10.4 默认全开）。

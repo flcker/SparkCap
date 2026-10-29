@@ -1,6 +1,6 @@
 # SparkCap 规格说明（Spec）
 
-- 版本：1.4（屏幕域扩展：窗口捕获 WGC + GDI 降级链 + fps 限速 + 窗口状态契约；`sparkcap_screen_start` 加 fps 参数；错误码 13）
+- 版本：1.4（屏幕域扩展：窗口捕获 WGC + GDI 降级链 + fps 限速 + 窗口状态契约 + 光标/边框选项；`sparkcap_screen_start` 加 fps 参数；错误码 13）
 - 日期：2026-10-29
 - 状态：待评审
 - 关联文档：design.md
@@ -44,6 +44,7 @@
 | F18 | fps 限速 | `start` 传 fps>0 会话层统一节流（后端无关）；0 = 跟随源全速 | 限速后交付帧率 ≤ 设定值 |
 | F19 | 窗口状态 | 最小化：错误回调 `SOURCE_PAUSED` 一次 + get_frame 返回 TIMEOUT（不补假帧），还原自动恢复；关闭：`STREAM_LOST`；resize：帧尺寸跟随 | 三态行为与通知契约一致 |
 | F20 | GDI 降级链 | 显示器 BitBlt / 窗口 PrintWindow（PW_RENDERFULLCONTENT），start 时主后端失败自动回落，应用无感 | 降级路径出帧正常（边角限制见技术选型 §10.5） |
+| F21 | 屏幕域选项 | set_options：光标/边框 best-effort 可配置（默认无光标 + 尽力无边框；不支持静默降级，矩阵见 §4.7） | 未知位返回 OK；start 后设置 UNSUPPORTED；WGC 路径按选项生效 |
 
 ## 4. 接口契约
 
@@ -71,6 +72,7 @@
 | sparkcap_screen_open_window | 按 hwnd 打开窗口会话（主后端 WGC，不可用回落 GDI；快照后已关闭返回 NOT_FOUND） |
 | sparkcap_screen_set_frame_callback | 注册帧回调（start 前；类型与帧结构复用视频域） |
 | sparkcap_screen_set_error_callback | 注册错误回调（ACCESS_LOST / SOURCE_PAUSED / STREAM_LOST，start 前） |
+| sparkcap_screen_set_options | 设置会话选项（光标/边框，sparkcap_screen_option_t 位掩码；best-effort：不支持的组合静默降级，行为矩阵见 §4.7；未知位忽略返回 OK；start 前，start 后 UNSUPPORTED） |
 | sparkcap_screen_start | 启动捕获（fps：0=跟随源全速，>0 会话层节流；分辨率/格式由目标决定：原生分辨率、BGRA 固定） |
 | sparkcap_screen_get_frame | 拉取一帧（静止期事件驱动后端 TIMEOUT / 轮询后端重复帧——应用不假设帧唯一性） |
 | sparkcap_screen_stop | 停止捕获 |
@@ -151,6 +153,21 @@
 2. start/stop 可在同一设备上多次交替；stop 后 get_frame 返回 SPARKCAP_ERR_STREAM_LOST；
 3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；
 4. 合法序列之外的调用返回相应错误码，不产生未定义行为、不崩溃。
+
+### 4.7 屏幕域选项行为矩阵（best-effort）
+
+`sparkcap_screen_set_options`（会话级，start 前设置；默认 0 = 帧不含光标 + 尽力关闭系统提示边框）。
+**不报错原则：不支持的后端/系统组合静默降级到该后端天然行为，接入方按矩阵设计而非靠返回码探测。**
+未知位忽略返回 OK（位掩码前向兼容惯例）。
+
+| 后端/系统 | CURSOR 位未设（默认） | CURSOR 位设置 | BORDER 位未设（默认） | BORDER 位设置 |
+|---|---|---|---|---|
+| DXGI 显示器 | 不含光标（天然） | 仍不含（不支持，静默） | 无框（天然） | 无框（无意义，静默） |
+| WGC @ Win11 | `IsCursorCaptureEnabled=false`（对齐 DXGI 契约） | `IsCursorCaptureEnabled=true` | `IsBorderRequired=false`（官方黄框关闭路径） | 不调 API（系统默认黄框） |
+| WGC @ Win10 | **仍含光标（接口不存在，关不掉）** | 含 | **仍黄框（关不掉）** | 黄框 |
+| GDI 兜底 | 不含光标（天然） | 仍不含（静默） | 无框（天然） | 无框（静默） |
+
+注：WGC 的光标属性 `IsCursorCaptureEnabled` 在 `IGraphicsCaptureSession2`、边框属性 `IsBorderRequired` 在 `IGraphicsCaptureSession3`（Win11 SDK）；接口不存在（Win10）时两属性全部跳过——帧含光标、黄框保留，属已知行为差异（本机 Win11 实测：默认选项下黄框消失、BORDER 位置时黄框出现）。
 
 ## 5. 非功能指标
 

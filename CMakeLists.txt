@@ -37,10 +37,14 @@ else()
     list(APPEND SPARKCAP_SRC src/camera/backend_ffmpeg_stub.cpp)
 endif()
 if (SPARKCAP_ENABLE_SCREEN)
-    list(APPEND SPARKCAP_SRC src/screen/backend_dxgi.cpp)
+    list(APPEND SPARKCAP_SRC
+        src/screen/screen_session.cpp   # 会话层：目标模型/降级链/fps 节流/窗口状态轮询
+        src/screen/backend_dxgi.cpp     # 显示器主后端（Desktop Duplication）+ 显示器枚举/定位
+        src/screen/backend_wgc.cpp      # 窗口主后端（WinRT COM 直调）
+        src/screen/backend_gdi.cpp)     # 双目标兜底（BitBlt / PrintWindow）
 else()
-    # 桩：头文件/ABI/导出面不变（list 返回空计数，其余 UNSUPPORTED），见 backend_dxgi_stub.cpp
-    list(APPEND SPARKCAP_SRC src/screen/backend_dxgi_stub.cpp)
+    # 桩：头文件/ABI/导出面不变（list 返回空计数，其余 UNSUPPORTED），见 screen_stub.cpp
+    list(APPEND SPARKCAP_SRC src/screen/screen_stub.cpp)
 endif()
 
 add_library(sparkcap SHARED ${SPARKCAP_SRC})
@@ -58,8 +62,9 @@ target_include_directories(sparkcap
 target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid mfreadwrite strmiids)
 
 if (SPARKCAP_ENABLE_SCREEN)
-    # 屏幕域：dxgi+d3d11（Desktop Duplication 复制链）、user32（显示器枚举/主屏判定）
-    target_link_libraries(sparkcap PRIVATE dxgi d3d11 user32)
+    # 屏幕域：dxgi+d3d11（Duplication/WGC 复制链）、user32（枚举/窗口状态轮询）、
+    # gdi32（兜底 BitBlt/PrintWindow）、runtimeobject（WGC 的 WinRT 激活：RoGetActivationFactory/WinString）
+    target_link_libraries(sparkcap PRIVATE dxgi d3d11 user32 gdi32 runtimeobject)
 endif()
 
 if (SPARKCAP_ENABLE_FFMPEG)

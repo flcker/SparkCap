@@ -83,9 +83,9 @@ static void case_session_flow()
     sparkcap_device_t* second = nullptr;
     CHECK_EQ(sparkcap_screen_open(backend, primaryId, &second), SPARKCAP_ERR_DEVICE_BUSY);
 
-    // F14：启动（无偏好参数）→ 拉帧：OK（变化桌面，校验帧）或
+    // F14：启动（fps=0 全速）→ 拉帧：OK（变化桌面，校验帧）或
     // TIMEOUT（静止桌面）皆为合法路径
-    CHECK_EQ(sparkcap_screen_start(device), SPARKCAP_ERR_OK);
+    CHECK_EQ(sparkcap_screen_start(device, 0), SPARKCAP_ERR_OK);
     sparkcap_frame_t* frame = nullptr;
     const int rc = sparkcap_screen_get_frame(device, &frame, 3000);
     if (rc == SPARKCAP_ERR_OK) {
@@ -110,7 +110,7 @@ static void case_session_flow()
 
     // I9 同构：close 后一切调用 = INVALID_HANDLE
     CHECK_EQ(sparkcap_screen_close(device), SPARKCAP_ERR_OK);
-    CHECK_EQ(sparkcap_screen_start(device), SPARKCAP_ERR_INVALID_HANDLE);
+    CHECK_EQ(sparkcap_screen_start(device, 0), SPARKCAP_ERR_INVALID_HANDLE);
     CHECK_EQ(sparkcap_screen_get_frame(device, &frame, 100), SPARKCAP_ERR_INVALID_HANDLE);
     CHECK_EQ(sparkcap_screen_stop(device), SPARKCAP_ERR_INVALID_HANDLE);
     CHECK_EQ(sparkcap_screen_set_frame_callback(device, dummyFrameCb, nullptr),

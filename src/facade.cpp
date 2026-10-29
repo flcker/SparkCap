@@ -6,7 +6,7 @@
 #include "sparkcap.h"
 
 #include "camera/device_manager.h"
-#include "screen/backend_dxgi.h"
+#include "screen/screen_session.h"
 
 #include <mfapi.h>
 #include <objbase.h>
@@ -311,7 +311,7 @@ int sparkcap_camera_close(sparkcap_device_t* device)
     return SPARKCAP_ERR_OK;
 }
 
-// ---- 屏幕域（F12–F15，DXGI Desktop Duplication）----
+// ---- 屏幕域（F12–F20，显示器/窗口捕获 + 双降级链 + fps 限速 + 窗口状态契约）----
 
 int sparkcap_screen_list_displays(sparkcap_backend_t* backend,
                                   sparkcap_display_info_t* displays,
@@ -365,8 +365,11 @@ int sparkcap_screen_open(sparkcap_backend_t* backend, int displayId, sparkcap_de
         if (device == nullptr)
             return SPARKCAP_ERR_NO_MEMORY;
 
+        sparkcap::ScreenTarget target;
+        target.kind = sparkcap::ScreenTarget::Kind::Display;
+        target.displayId = displayId;
         std::unique_ptr<sparkcap::SparkCapScreenSession> session;
-        const int rc = sparkcap::screenOpenSession(displayId, &session);
+        const int rc = sparkcap::screenOpenSession(target, &session);
         if (rc != SPARKCAP_ERR_OK || session == nullptr) {
             delete device;
             return rc;
@@ -374,6 +377,75 @@ int sparkcap_screen_open(sparkcap_backend_t* backend, int displayId, sparkcap_de
         device->owner = backend;
         device->screen = std::move(session);
         device->screenDisplayId = displayId;
+
+        {
+            std::lock_guard<std::mutex> lk(backend->deviceMutex);
+            backend->devices.insert(device);
+        }
+        *outDevice = device;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_list_windows(sparkcap_backend_t* backend,
+                                 sparkcap_window_info_t* windows,
+                                 int* inOutCount)
+{
+    if (backend == nullptr || inOutCount == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    try {
+        std::vector<sparkcap_window_info_t> list;
+        const int rc = sparkcap::screenListWindows(list);
+        if (rc != SPARKCAP_ERR_OK) {
+            *inOutCount = 0;
+            return rc;
+        }
+        const int total = static_cast<int>(list.size());
+        if (windows == nullptr) {
+            *inOutCount = total;
+            return SPARKCAP_ERR_OK;
+        }
+        const int fit = (*inOutCount < total) ? *inOutCount : total;
+        for (int i = 0; i < fit; ++i)
+            windows[i] = list[i];
+        *inOutCount = total;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_open_window(sparkcap_backend_t* backend, uint64_t hwnd,
+                                sparkcap_device_t** outDevice)
+{
+    if (outDevice == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *outDevice = nullptr;
+    if (backend == nullptr || hwnd == 0)
+        return SPARKCAP_ERR_INVALID_ARG;
+
+    try {
+        auto* device = new (std::nothrow) sparkcap_device();
+        if (device == nullptr)
+            return SPARKCAP_ERR_NO_MEMORY;
+
+        sparkcap::ScreenTarget target;
+        target.kind = sparkcap::ScreenTarget::Kind::Window;
+        target.hwnd = hwnd;
+        std::unique_ptr<sparkcap::SparkCapScreenSession> session;
+        const int rc = sparkcap::screenOpenSession(target, &session);
+        if (rc != SPARKCAP_ERR_OK || session == nullptr) {
+            delete device;
+            return rc;
+        }
+        device->owner = backend;
+        device->screen = std::move(session);
 
         {
             std::lock_guard<std::mutex> lk(backend->deviceMutex);
@@ -420,14 +492,27 @@ int sparkcap_screen_set_error_callback(sparkcap_device_t* device, sparkcap_error
     }
 }
 
-int sparkcap_screen_start(sparkcap_device_t* device)
+int sparkcap_screen_set_options(sparkcap_device_t* device, uint32_t options)
 {
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
     if (!validDevice(device->owner, device) || device->screen == nullptr)
         return SPARKCAP_ERR_INVALID_HANDLE;
     try {
-        return device->screen->start();
+        return device->screen->setOptions(options);  // 未知位忽略（前向兼容）
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_start(sparkcap_device_t* device, int fps)
+{
+    if (device == nullptr || fps < 0)
+        return SPARKCAP_ERR_INVALID_ARG;  // fps：0=全速，>0 节流；负值非法（F18）
+    if (!validDevice(device->owner, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->screen->start(fps);
     } catch (const std::bad_alloc&) {
         return SPARKCAP_ERR_NO_MEMORY;
     } catch (...) {

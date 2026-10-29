@@ -20,6 +20,7 @@ static void case_error_code_values()
     CHECK_EQ(SPARKCAP_ERR_NO_MEMORY, 10);
     CHECK_EQ(SPARKCAP_ERR_IN_CALLBACK, 11);
     CHECK_EQ(SPARKCAP_ERR_INTERNAL, 12);
+    CHECK_EQ(SPARKCAP_ERR_SOURCE_PAUSED, 13);  // 屏幕域窗口最小化（Spec v1.4 §4.2）
 }
 
 static void case_pixfmt_values()

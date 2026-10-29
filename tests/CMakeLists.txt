@@ -66,6 +66,7 @@ sparkcap_integration_test(dshow)
 sparkcap_integration_test(multidevice)
 sparkcap_integration_test(rtsp)
 sparkcap_integration_test(screen)
+sparkcap_integration_test(window)
 
 # ---- soak（M4 验收专项：重连/长稳）----
 add_executable(test_soak_reconnect soak/test_reconnect.cpp)
