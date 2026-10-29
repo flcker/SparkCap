@@ -382,7 +382,7 @@ bool FfmpegSession::pushFrameLocked(const AVFrame* f)
     slot->frame = m_frameDesc;  // 复用格式骨架
     slot->frame.width = w;
     slot->frame.height = h;
-    slot->frame.pixelFormat = pf;
+    slot->frame.pixel_format = pf;
     slot->frame.stride = yStride;
     slot->frame.size = static_cast<int>(size);
     slot->frame.data = slot->data.data();

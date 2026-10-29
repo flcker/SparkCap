@@ -59,8 +59,8 @@ void case_session_flow(sparkcap_backend_t* backend, int deviceId)  // I3 + I8 + 
             break;
         CHECK(f->width > 0 && f->height > 0);
         CHECK(f->size > 0);
-        CHECK(f->pixelFormat != SPARKCAP_PIXFMT_UNKNOWN);
-        CHECK(f->stride != 0 || f->pixelFormat == SPARKCAP_PIXFMT_MJPG);
+        CHECK(f->pixel_format != SPARKCAP_PIXFMT_UNKNOWN);
+        CHECK(f->stride != 0 || f->pixel_format == SPARKCAP_PIXFMT_MJPG);
         const int64_t ts = f->timestamp;
         if (got > 0)
             CHECK(ts >= lastTs);  // 时间戳单调不减（恒 0 的驱动合法，见 M1c YY开播）

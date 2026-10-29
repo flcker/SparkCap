@@ -24,7 +24,7 @@
 | R3 | 保留原始像素格式（YUY2/MJPG/NV12），不做隐式转换 | P0 |
 | R4 | 低延迟取帧，支持回调与主动拉取两种模式 | P0 |
 | R5 | IP Camera（RTSP）采集，与本地设备同一设备列表 | P1 |
-| R6 | 帧格式统一描述（pixelFormat + stride） | P0 |
+| R6 | 帧格式统一描述（pixel_format + stride） | P0 |
 | R7 | 硬件加速解码（D3D11VA） | P1 |
 
 ## 3. 方案对比
@@ -61,7 +61,7 @@ flowchart TD
     IF --> MF["MF 后端<br/>IMFSourceReader 异步<br/>buffer Lock 零拷贝"]
     IF --> DS["DShow 后端<br/>ISampleGrabber + CaptureGraph<br/>BufferCB 帧拷贝"]
     IF --> FF["FFmpeg 后端<br/>RTSP + H.264/HEVC 软解/D3D11VA<br/>内部 demux 线程 + 断流重连"]
-    MF --> Q["统一帧输出层<br/>FrameQueue 环形队列（8 槽满丢最旧）<br/>帧携带 pixelFormat + stride"]
+    MF --> Q["统一帧输出层<br/>FrameQueue 环形队列（8 槽满丢最旧）<br/>帧携带 pixel_format + stride"]
     DS --> Q
     FF --> Q
     Q --> APP
@@ -71,7 +71,7 @@ flowchart TD
 - MF 后端：基于 IMFSourceReader 异步读取，D3D11 路径 surface 直通实现零拷贝，CPU 路径经 IMF2DBuffer 减少拷贝，支持 MF_SA_D3D11_AWARE。
 - DShow 后端：ISampleGrabber + CaptureGraph。
 - FFmpeg 后端：处理 rtsp:// 流，H.264/HEVC 解码，接 D3D11VA。
-- 统一帧输出层：环形队列 + 回调，帧结构携带 pixelFormat 与 stride，不暴露后端差异。
+- 统一帧输出层：环形队列 + 回调，帧结构携带 pixel_format 与 stride，不暴露后端差异。
 - ICaptureBackend 抽象接口：新增后端上层零改动（FFmpeg 后端与其余二者线程模型/生命周期完全异质而共存于同一接口，即抽象层有效性的实证）。
 
 ## 5. 对外 API 风格
@@ -91,7 +91,7 @@ flowchart TD
         void*        data;
         int          width;
         int          height;
-        PixelFormat  pixelFormat;   // 输出侧格式：NV12/YUY2/I420/MJPG/RGB24；RGB32 仅当设备原生输出
+        PixelFormat  pixel_format;   // 输出侧格式：NV12/YUY2/I420/MJPG/RGB24；RGB32 仅当设备原生输出
         int          stride;        // 符号表示行序：正 top-down，负 bottom-up（MF/DShow 统一语义）
         int          size;          // 帧数据字节长度：压缩格式必需；2D 格式 = |stride| × height
         int64_t      timestamp;

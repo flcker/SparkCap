@@ -19,14 +19,14 @@ static int frameLuma(const sparkcap_frame_t* f)
     const int h = f->height;
     long long sum = 0;
     long long n = 0;
-    if (f->pixelFormat == SPARKCAP_PIXFMT_I420 || f->pixelFormat == SPARKCAP_PIXFMT_NV12) {
+    if (f->pixel_format == SPARKCAP_PIXFMT_I420 || f->pixel_format == SPARKCAP_PIXFMT_NV12) {
         const unsigned char* y = (const unsigned char*)f->data;
         for (int row = 0; row < h; row += 4)
             for (int col = 0; col < w; col += 8) {
                 sum += y[(long long)row * f->stride + col];
                 ++n;
             }
-    } else if (f->pixelFormat == SPARKCAP_PIXFMT_YUY2) {
+    } else if (f->pixel_format == SPARKCAP_PIXFMT_YUY2) {
         const unsigned char* p = (const unsigned char*)f->data;
         for (int row = 0; row < h; row += 4)
             for (int col = 0; col < w; col += 8) {

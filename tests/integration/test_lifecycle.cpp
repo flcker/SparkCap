@@ -26,9 +26,9 @@ static void case_null_args()
 
     sparkcap_frame_t f = {};
     sparkcap_frame_t* copy = nullptr;
-    CHECK_EQ(sparkcap_camera_copy_frame(nullptr, &copy), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_camera_copy_frame(&f, nullptr), SPARKCAP_ERR_INVALID_ARG);
-    CHECK_EQ(sparkcap_camera_release_frame(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_copy_frame(nullptr, &copy), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_copy_frame(&f, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_release_frame(nullptr), SPARKCAP_ERR_INVALID_ARG);
 }
 
 static void case_bad_device_id()  // I10：不存在设备

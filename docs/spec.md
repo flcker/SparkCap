@@ -42,22 +42,22 @@
 
 | 函数 | 说明 |
 |---|---|
+| sparkcap_version | 返回库版本字符串 |
+| sparkcap_query_features | 返回功能集位掩码（`sparkcap_feature_t`，编译期裁剪的运行时可探测入口；能力域命名与 CMake option 故意不同名：`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`） |
+| sparkcap_create_backend | 创建后端实例 |
+| sparkcap_destroy_backend | 销毁实例 |
+| sparkcap_set_log_callback | 注册日志回调（进程级诊断输出路由，任意时机） |
 | sparkcap_camera_list_devices | 枚举设备 |
 | sparkcap_camera_get_formats | 查询设备能力（分辨率/格式/帧率，两段式） |
-| sparkcap_create_backend | 创建后端实例 |
 | sparkcap_camera_open | 打开设备 |
 | sparkcap_camera_set_frame_callback | 注册帧回调（回调模式入口，须在 start 前） |
 | sparkcap_camera_set_error_callback | 注册错误回调（流断开通知，须在 start 前） |
-| sparkcap_set_log_callback | 注册日志回调（诊断输出，任意时机） |
 | sparkcap_camera_start | 启动采集 |
 | sparkcap_camera_get_frame | 拉取一帧 |
-| sparkcap_camera_copy_frame | 深拷贝一帧 |
-| sparkcap_camera_release_frame | 释放帧 |
 | sparkcap_camera_stop | 停止采集 |
 | sparkcap_camera_close | 关闭设备 |
-| sparkcap_destroy_backend | 销毁实例 |
-| sparkcap_version | 返回库版本字符串 |
-| sparkcap_query_features | 返回功能集位掩码（`sparkcap_feature_t`，编译期裁剪的运行时可探测入口；能力域命名与 CMake option 故意不同名：`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`） |
+| sparkcap_copy_frame | 深拷贝一帧 |
+| sparkcap_release_frame | 释放帧 |
 
 ### 4.2 错误码
 
@@ -96,7 +96,7 @@
 
 **帧回调**（sparkcap_frame_cb）：交付帧数据，帧仅回调期间有效。
 
-**错误回调**（sparkcap_error_cb）：流断开时通知（error_code = SPARKCAP_ERR_STREAM_LOST）。
+**错误回调**（sparkcap_error_cb，参数 error_code 类型为 `sparkcap_err_t`）：流断开时通知（error_code = SPARKCAP_ERR_STREAM_LOST）。
 不发送"恢复"信号——重连成功后帧回调恢复交付，应用据此推断恢复。
 
 **日志回调**（sparkcap_log_cb）：诊断信息输出。注册后库内部日志（含 FFmpeg av_log）

@@ -105,7 +105,7 @@ bool formatFromVideoInfo(const AM_MEDIA_TYPE* pmt, sparkcap_device_format_t* out
         return false;
     out->width = w;
     out->height = h;
-    out->pixelFormat = pf;
+    out->pixel_format = pf;
     out->fps = (vi->AvgTimePerFrame > 0)
         ? static_cast<int>(1e7 / vi->AvgTimePerFrame + 0.5)  // 100ns → fps 四舍五入
         : 0;
@@ -413,7 +413,7 @@ void DshowSession::applyFormatPreferenceLocked(int width, int height, sparkcap_p
         bool take = false;
         if (formatFromVideoInfo(pmt, &f)) {
             if ((width <= 0 || f.width == width) && (height <= 0 || f.height == height) &&
-                (fmt == SPARKCAP_PIXFMT_UNKNOWN || f.pixelFormat == fmt))
+                (fmt == SPARKCAP_PIXFMT_UNKNOWN || f.pixel_format == fmt))
             {
                 const int d = (fps > 0) ? std::abs(f.fps - fps) : 0;
                 if (best == nullptr || d < bestFpsDelta) {
@@ -502,7 +502,7 @@ int DshowSession::buildGraphLocked()
 
     m_frame.width = w;
     m_frame.height = h;
-    m_frame.pixelFormat = pf;
+    m_frame.pixel_format = pf;
     if (pf == SPARKCAP_PIXFMT_MJPG) {
         m_frame.stride = 0;  // 压缩格式：帧长以 BufferCB 实际长度为准
     } else {

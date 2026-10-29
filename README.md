@@ -7,13 +7,13 @@ Windows 统一采集库——一套 C API。**摄像头域已交付**（三种�
 - **统一设备列表**：USB 摄像头、虚拟摄像头、IP Camera（RTSP）一次枚举
 - **原始格式保真**：YUY2 / MJPG / NV12 / I420 直出，不做隐式转换
 - **双取帧模式**：主动拉取（带超时）与回调交付
-- **帧自带 pixelFormat + stride**，不暴露后端差异
+- **帧自带 pixel_format + stride**，不暴露后端差异
 - **RTSP 断流自动重连**（≤ 10s，Spec N5）
 - **零第三方运行时依赖**：FFmpeg 静态裁剪内嵌，符号不进导出表
 
 ## 状态
 
-**摄像头域 M1–M4 全部交付**：12/12 测试全绿，DLL 3.7MB，15 个导出 API，错误/日志回调齐备。里程碑：
+**摄像头域 M1–M4 全部交付**：12/12 测试全绿，DLL 3.7MB，16 个导出 API，错误/日志回调齐备。里程碑：
 
 - [x] M1 双后端枚举 + 本地设备取帧
 - [x] M2 统一帧层（环形队列 + 回调模式）
@@ -29,7 +29,7 @@ cmake --preset default
 cmake --build --preset release
 ```
 
-纯本地采集可裁剪 FFmpeg（182KB DLL，15 符号/ABI 不变）：`cmake -B build-min -DSPARKCAP_ENABLE_FFMPEG=OFF`。
+纯本地采集可裁剪 FFmpeg（182KB DLL，16 符号/ABI 不变）：`cmake -B build-min -DSPARKCAP_ENABLE_FFMPEG=OFF`。
 
 产物：`out/x64/Release/sparkcap.dll`（Debug 为 `sparkcapd.dll`）。
 
@@ -60,7 +60,7 @@ int main(void)
 
     sparkcap_frame_t* frame = NULL;
     if (sparkcap_camera_get_frame(dev, &frame, 1000) == SPARKCAP_ERR_OK) {
-        /* frame->data / width / height / pixelFormat / stride */
+        /* frame->data / width / height / pixel_format / stride */
     }
 
     sparkcap_camera_stop(dev);
@@ -71,23 +71,24 @@ int main(void)
 }
 ```
 
-回调模式：在 `sparkcap_camera_start` 前调用 `sparkcap_camera_set_frame_callback` 注册回调，帧在回调期间有效，跨线程持有须 `sparkcap_camera_copy_frame`。
+回调模式：在 `sparkcap_camera_start` 前调用 `sparkcap_camera_set_frame_callback` 注册回调，帧在回调期间有效，跨线程持有须 `sparkcap_copy_frame`。
 
 ## API 概览
 
 | 函数 | 说明 |
 |---|---|
+| `sparkcap_version` | 版本字符串 |
+| `sparkcap_query_features` | 功能集位掩码（编译期裁剪探测，任意时刻可调） |
+| `sparkcap_create_backend` / `sparkcap_destroy_backend` | 后端实例生命周期 |
+| `sparkcap_set_log_callback` | 注册日志回调（进程级，FFmpeg av_log 路由） |
 | `sparkcap_camera_list_devices` | 枚举设备（两段式） |
 | `sparkcap_camera_get_formats` | 查询设备能力（分辨率/格式/帧率，两段式） |
-| `sparkcap_create_backend` / `sparkcap_destroy_backend` | 后端实例生命周期 |
 | `sparkcap_camera_open` / `sparkcap_camera_close` | 设备生命周期 |
 | `sparkcap_camera_set_frame_callback` | 注册帧回调（start 前） |
 | `sparkcap_camera_set_error_callback` | 注册流断错误回调（start 前） |
-| `sparkcap_set_log_callback` | 注册日志回调（进程级，FFmpeg av_log 路由） |
 | `sparkcap_camera_start` / `sparkcap_camera_stop` | 采集控制 |
 | `sparkcap_camera_get_frame` | 拉取一帧（带超时） |
-| `sparkcap_camera_copy_frame` / `sparkcap_camera_release_frame` | 帧深拷贝与释放 |
-| `sparkcap_version` | 版本字符串 |
+| `sparkcap_copy_frame` / `sparkcap_release_frame` | 帧深拷贝与释放 |
 
 ## 文档
 

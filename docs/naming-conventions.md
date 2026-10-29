@@ -12,7 +12,7 @@
 ## 2. 总则（红线）
 
 1. 对外 C 符号以 `sparkcap_` 为前缀，全小写下划线分隔。**两级前缀结构**（多域架构，技术选型 §10.2）：
-   - 跨域通用层（backend/version/features/log）：`sparkcap_<动词>_<名词>`
+   - 跨域通用层（backend/version/features/log/帧工具）：`sparkcap_<动词>_<名词>`；帧工具 `copy_frame` / `release_frame` 操作库级帧类型（`sparkcap_frame_t`），域前缀判据是"操作属于该域"，帧工具不属任何域（v2 屏幕域直接复用）
    - 域操作层：`sparkcap_<域>_<动词>_<名词>`，摄像头域为 `sparkcap_camera_*`；v2 落地 `sparkcap_audio_*` / `sparkcap_screen_*`
 2. 内部 C++ 类/结构以 `SparkCap` 为前缀，采用 PascalCase。
 3. 导出宏统一为 `SPARKCAP_API`，禁止散用 `__declspec(dllexport)`。

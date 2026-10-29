@@ -1,21 +1,22 @@
 ; SparkCap 导出清单（docs/SparkCap-命名规范.md §6）
 ; 最终导出面以此白名单为准；SPARKCAP_API 负责源码语义。
 ; 不写 LIBRARY 语句：模块名跟随输出文件（sparkcap.dll / sparkcapd.dll）。
+; 顺序与 include/sparkcap.h 声明块一致（通用层 → 摄像头域 → 帧工具）。
 
 EXPORTS
+    sparkcap_version
+    sparkcap_query_features
+    sparkcap_create_backend
+    sparkcap_destroy_backend
+    sparkcap_set_log_callback
     sparkcap_camera_list_devices
     sparkcap_camera_get_formats
-    sparkcap_create_backend
     sparkcap_camera_open
     sparkcap_camera_set_frame_callback
     sparkcap_camera_set_error_callback
-    sparkcap_set_log_callback
     sparkcap_camera_start
     sparkcap_camera_get_frame
-    sparkcap_camera_copy_frame
-    sparkcap_camera_release_frame
     sparkcap_camera_stop
     sparkcap_camera_close
-    sparkcap_destroy_backend
-    sparkcap_version
-    sparkcap_query_features
+    sparkcap_copy_frame
+    sparkcap_release_frame

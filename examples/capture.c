@@ -80,8 +80,8 @@ int main(int argc, char** argv)
 
         if (i == 0) {  /* 跨调用持有的正确姿势 */
             sparkcap_frame_t* copy = NULL;
-            if (sparkcap_camera_copy_frame(frame, &copy) == SPARKCAP_ERR_OK)
-                sparkcap_camera_release_frame(copy);
+            if (sparkcap_copy_frame(frame, &copy) == SPARKCAP_ERR_OK)
+                sparkcap_release_frame(copy);
         }
     }
 

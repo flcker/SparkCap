@@ -86,7 +86,7 @@ int main(void)
                     for (int k = 0; k < 3 && k < cap; ++k)
                         printf("%s %dx%d %s@%d", (k == 0) ? " [" : ",",
                                fmts[k].width, fmts[k].height,
-                               pixfmtName(fmts[k].pixelFormat), fmts[k].fps);
+                               pixfmtName(fmts[k].pixel_format), fmts[k].fps);
                 printf("]\n");
             } else {
                 printf("        formats: none\n");

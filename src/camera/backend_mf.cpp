@@ -480,7 +480,7 @@ int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fm
 
     m_frame.width = static_cast<int>(chosen->w);
     m_frame.height = static_cast<int>(chosen->h);
-    m_frame.pixelFormat = chosen->pf;
+    m_frame.pixel_format = chosen->pf;
 
     // stride：优先 MF_MT_DEFAULT_STRIDE，缺失时按 FOURCC 计算；压缩格式（MJPG）无意义置 0
     GUID sub = {};
@@ -488,7 +488,7 @@ int MfSession::selectMediaTypeLocked(int width, int height, sparkcap_pixfmt_t fm
     chosen->type->GetGUID(MF_MT_SUBTYPE, &sub);
     if (FAILED(chosen->type->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride))) {
         LONG calc = 0;
-        if (m_frame.pixelFormat != SPARKCAP_PIXFMT_MJPG &&
+        if (m_frame.pixel_format != SPARKCAP_PIXFMT_MJPG &&
             SUCCEEDED(MFGetStrideForBitmapInfoHeader(sub.Data1, chosen->w, &calc)) && calc > 0)
             stride = static_cast<UINT32>(calc);
         else
@@ -640,7 +640,7 @@ int MfBackend::getFormats(const sparkcap_device_info_t& info,
         sparkcap_device_format_t f = {};
         f.width = static_cast<int>(w);
         f.height = static_cast<int>(h);
-        f.pixelFormat = pf;
+        f.pixel_format = pf;
         f.fps = fps;
         out.push_back(f);
     }
