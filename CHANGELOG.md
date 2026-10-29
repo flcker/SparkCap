@@ -6,6 +6,8 @@
 
 ### Changed
 
+- **A5/N1 延迟实测：未达标挂账**（Spec §9-6，留后开发）：拍屏法（工具修复后）实测 J.ZAO W4AS 640×480 NV12@30 全链路 median 105–113ms（≈3.3 帧），未达 N1"≤2 帧"标准。全链路含屏幕 VSync（估 17–33ms）、设备曝光/读出（估 30–50ms）、USB 传输（估 10–15ms）等库外环节，库内占比未直接测量——后续补库内交付延迟测量（帧时间戳→回调触发/get_frame 返回）后再决策口径（修订 N1 边界为库内交付，或维持全链路并按设备分级）。实验排除库内可优化项：`MF_LOW_LATENCY` 属性对该设备无效果（试验后回退，未采纳）
+
 - **公开头接口面整理（v1.0.0 定版前最后一次 ABI 调整）**：帧工具去域前缀——`sparkcap_camera_copy_frame`/`sparkcap_camera_release_frame` → `sparkcap_copy_frame`/`sparkcap_release_frame`（签名不接 camera 句柄、实现为类型级 magic-header，且 `sparkcap_frame_t` 为库级类型，按两级命名规则判据归通用层；v2 屏幕域帧直接复用）；`sparkcap_set_log_callback` 移除 device 参数（路由为进程级全局，原参数仅做校验，签名与实现对齐；回调签名中的来源 device 参数保留）；结构体字段 `pixelFormat` → `pixel_format`（全头文件唯一 camelCase 字段，统一 snake_case）；`sparkcap_error_cb` 参数 `int` → `sparkcap_err_t`（对齐"错误码只用枚举值"规则；MSVC 下与 int 同 4 字节，ABI 不变）；头文件与 .def 重排为两级结构（库信息 → 上下文 → 域发现 → 域会话 → 帧工具），`query_features`/`version` 提至最前（接入方首个可调），`list_devices` 不再先于 `create_backend`
 - **src/ 按两级结构分目录**：`src/`（门面 facade.cpp + sparkcap.def）+ `src/common/`（跨域设施）+ `src/camera/`（摄像头域）——与 API 两级前缀（sparkcap_ 通用 / sparkcap_camera_ 域）同构，v2 落地 `src/audio/`、`src/screen/` 即纯增量。common 归位清单（v2 域直接复用、不再 include camera 目录）：CallbackGuard/g_inFrameCallback/LogRoute/sparkcapLog（原寄生 capture_backend.h/device_manager.cpp）→ `capture_common.h/.cpp`；frame_queue（音频缓冲队列同构）；str_util；json_config（sparkcap.json 为库级配置资源，按域扩展配置段 §10.2）；pixfmt_map/pixfmt_av（库级 pixfmt 枚举的映射集，屏幕域 DXGI 映射后续加入）。git mv 保留历史；内部结构重组不影响 ABI。验证：全量 12/12、dumpbin 16 符号不变、裁剪版 unit 5/5
 - **摄像头域 API 重命名为 `sparkcap_camera_*` 前缀**（v1.0.0 tag 前的窗口期决策，ABI 级变更）：两级前缀结构——跨域通用层保持 `sparkcap_`（create/destroy_backend、version、query_features、set_log_callback 共 5 个），域操作层 11 个加 `camera_`（list_devices、get_formats、open/close、set_frame/error_callback、start/stop/get_frame、copy/release_frame）。动机：多域（roadmap v2）确定落地，`sparkcap_camera_*` / `sparkcap_audio_*` / `sparkcap_screen_*` 对称族从符号层自文档化域归属；tag 后改名即 2.0 破坏版本，趁唯一下游（SparkCapDemo）联动成本最低时改对。类型名不带域前缀（`sparkcap_frame_t` 等为库级类型，屏幕域将复用视频帧结构；类型不进导出表，域专属化可后置）
@@ -21,6 +23,7 @@
 
 ### Fixed
 
+- 修复：拍屏法延迟工具四缺陷（A5 首次实测暴露，工具此前从未真正工作）——① flash_log.csv 表头行令测量端 `fscanf` 失配，数据行从未被读取；② 闪烁器长持有 CSV 写句柄，测量进程无法并发读取（改逐条打开-追加-关闭）；③ 全屏纯黑白交替触发 UVC 自动曝光震荡停流（J.ZAO 全档 STREAM_LOST，500ms 周期全败）——改上下半屏互补翻转（全屏平均亮度恒定，AE 稳定；500ms 周期 38/40 翻转干净捕获）；④ 翻转检测单阈值 128 在曝光过渡期抖动出假翻转——加滞回（>180 判白 / <76 判黑）与 200ms 去抖。另补格式偏好参数（`[width] [height] [fps] [fmt]`，带宽受限设备指定稳定档）与 get_frame 错误码计数诊断
 - 修复：DShow/MF `get_frame` 在拉取周期大于帧间隔时误报 `STREAM_LOST`——auto-reset 事件的残留信号（队列命中路径不消费事件）在下次"队列空"等待中被误当真信号唤醒，取不到帧即误报流断。修复为唤醒后回到循环顶重查队列（吸收假信号，继续等剩余时间），真 `STREAM_LOST` 仅来自 stop 或流失败。SparkCapDemo 33ms 拉取 + 15fps 会话实测：修复前 120 次拉取 33 次误报（27.5%，表现为画面与错误提示交替闪烁），修复后 0
 
 ### Added

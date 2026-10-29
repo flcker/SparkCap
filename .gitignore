@@ -30,3 +30,4 @@ third_party/ffmpeg/lib/
 
 # 本地测试配置（IP Camera 列表按环境自建，F8）
 /sparkcap.json
+flash_log.csv

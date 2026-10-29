@@ -6,17 +6,20 @@
 #include <stdio.h>
 #include <windows.h>
 
-static FILE* g_log = NULL;
 static LARGE_INTEGER g_freq = {};
 static BOOL g_white = FALSE;
 static UINT_PTR g_timer = 1;
 
+// 每条独立打开-追加-关闭：长持有写句柄会令测量进程无法同时读取 CSV
 static void logFlip(void)
 {
     LARGE_INTEGER now = {};
     QueryPerformanceCounter(&now);
-    fprintf(g_log, "%lld,%d\n", (long long)now.QuadPart, g_white ? 1 : 0);
-    fflush(g_log);
+    FILE* f = NULL;
+    if (fopen_s(&f, "flash_log.csv", "a") == 0 && f != NULL) {
+        fprintf(f, "%lld,%d\n", (long long)now.QuadPart, g_white ? 1 : 0);
+        fclose(f);
+    }
 }
 
 static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -31,21 +34,29 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         InvalidateRect(hwnd, NULL, TRUE);
         return 0;
     case WM_PAINT: {
+        // 互补翻转：上下两半黑白互换——全屏平均亮度恒定，摄像头自动曝光
+        // 不震荡（纯全屏黑白交替会令 UVC 曝光剧烈摆动甚至停流）。
+        // 测量端（measure_latency）检测上半屏亮度与本翻转对齐。
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(hwnd, &ps);
-        RECT rc;
+        RECT rc, top, bottom;
         GetClientRect(hwnd, &rc);
-        HBRUSH brush = CreateSolidBrush(g_white ? RGB(255, 255, 255) : RGB(0, 0, 0));
-        FillRect(dc, &rc, brush);
-        DeleteObject(brush);
+        top = rc;
+        top.bottom = (rc.top + rc.bottom) / 2;
+        bottom = rc;
+        bottom.top = top.bottom;
+        HBRUSH white = CreateSolidBrush(RGB(255, 255, 255));
+        HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+        FillRect(dc, g_white ? &top : &bottom, white);
+        FillRect(dc, g_white ? &bottom : &top, black);
+        DeleteObject(white);
+        DeleteObject(black);
         EndPaint(hwnd, &ps);
         return 0;
     }
     case WM_KEYDOWN:
     case WM_CLOSE:
         KillTimer(hwnd, g_timer);
-        if (g_log != NULL)
-            fclose(g_log);
         PostQuitMessage(0);
         return 0;
     default:
@@ -58,12 +69,13 @@ int main(int argc, char** argv)
     const UINT periodMs = (argc > 1) ? (UINT)atoi(argv[1]) : 500;
 
     QueryPerformanceFrequency(&g_freq);
-    fopen_s(&g_log, "flash_log.csv", "w");
-    if (g_log == NULL) {
+    FILE* hdr = NULL;
+    if (fopen_s(&hdr, "flash_log.csv", "w") != 0 || hdr == NULL) {
         printf("cannot open flash_log.csv\n");
         return 1;
     }
-    fprintf(g_log, "qpc,white\n");
+    fprintf(hdr, "qpc,white\n");
+    fclose(hdr);
 
     WNDCLASSW wc = {};
     wc.lpfnWndProc = wndProc;

@@ -4,7 +4,10 @@
 // 流程：取帧 → 帧平均亮度 → 检测黑白翻转（QPC 记时刻）→
 //       与 flash_log.csv 对应翻转的 QPC 相减 = 端到端延迟（光子→帧交付）。
 // 判定：中位数 ≤ 2 帧时间（N1；帧周期由画面实际帧间隔估算）。
-// 用法：measure_latency.exe [deviceId] [采样秒数，默认 15]
+// 用法：measure_latency.exe [deviceId] [采样秒数，默认 15] [width] [height] [fps] [fmt]
+//   width/height/fps/fmt 为可选格式偏好（0 = 自动协商）；带宽受限的 USB 设备
+//   应指定稳定档（如 J.ZAO：1280 720 25），避免自动落到病态高分辨率档。
+//   fmt 为 sparkcap_pixfmt_t 数值（1=NV12 2=YUY2 3=I420；亮度检测仅支持 Y 系）。
 
 #include <sparkcap.h>
 
@@ -12,23 +15,24 @@
 #include <stdlib.h>
 #include <windows.h>
 
-// 帧平均亮度（0-255）；仅 Y 系格式（RGB 系的 bottom-up 采样不在此处理）
+// 上半屏平均亮度（0-255）：与 flash_screen 的半屏互补翻转对齐（全屏均值恒定，
+// 摄像头 AE 稳定）；仅 Y 系格式（RGB 系的 bottom-up 采样不在此处理）
 static int frameLuma(const sparkcap_frame_t* f)
 {
     const int w = f->width;
-    const int h = f->height;
+    const int hHalf = f->height / 2;
     long long sum = 0;
     long long n = 0;
     if (f->pixel_format == SPARKCAP_PIXFMT_I420 || f->pixel_format == SPARKCAP_PIXFMT_NV12) {
         const unsigned char* y = (const unsigned char*)f->data;
-        for (int row = 0; row < h; row += 4)
+        for (int row = 0; row < hHalf; row += 4)
             for (int col = 0; col < w; col += 8) {
                 sum += y[(long long)row * f->stride + col];
                 ++n;
             }
     } else if (f->pixel_format == SPARKCAP_PIXFMT_YUY2) {
         const unsigned char* p = (const unsigned char*)f->data;
-        for (int row = 0; row < h; row += 4)
+        for (int row = 0; row < hHalf; row += 4)
             for (int col = 0; col < w; col += 8) {
                 sum += p[(long long)row * f->stride + col * 2];
                 ++n;
@@ -48,6 +52,10 @@ int main(int argc, char** argv)
 {
     const int wantId = (argc > 1) ? atoi(argv[1]) : -1;
     const int seconds = (argc > 2) ? atoi(argv[2]) : 15;
+    const int wantW = (argc > 3) ? atoi(argv[3]) : 0;
+    const int wantH = (argc > 4) ? atoi(argv[4]) : 0;
+    const int wantFps = (argc > 5) ? atoi(argv[5]) : 0;
+    const int wantFmt = (argc > 6) ? atoi(argv[6]) : 0;
 
     LARGE_INTEGER freq = {};
     QueryPerformanceFrequency(&freq);
@@ -83,7 +91,8 @@ int main(int argc, char** argv)
 
     sparkcap_device_t* dev = NULL;
     if (sparkcap_camera_open(backend, target, &dev) != SPARKCAP_ERR_OK ||
-        sparkcap_camera_start(dev, 0, 0, SPARKCAP_PIXFMT_UNKNOWN, 0) != SPARKCAP_ERR_OK)
+        sparkcap_camera_start(dev, wantW, wantH, (sparkcap_pixfmt_t)wantFmt, wantFps)
+            != SPARKCAP_ERR_OK)
     {
         printf("open/start failed\n");
         sparkcap_camera_close(dev);
@@ -93,32 +102,51 @@ int main(int argc, char** argv)
     }
     printf("capturing device %d for %d s ...\n", target, seconds);
 
-    // 取帧 + 翻转检测
+    // 取帧 + 翻转检测（失败时按错误码计数，供间歇性故障诊断）
     Flip flips[256];
     int nFlips = 0;
     int lastWhite = -1;
+    long long lastFlipQpc = 0;
     int64_t lastTs = 0, firstTs = 0;
     int frames = 0;
+    int rcCount[16] = {0};
     const ULONGLONG t0 = GetTickCount64();
     while (GetTickCount64() - t0 < (ULONGLONG)seconds * 1000 && nFlips < 200) {
         sparkcap_frame_t* f = NULL;
-        if (sparkcap_camera_get_frame(dev, &f, 5000) != SPARKCAP_ERR_OK)
+        const int rc = sparkcap_camera_get_frame(dev, &f, 5000);
+        if (rc != SPARKCAP_ERR_OK) {
+            if (rc >= 0 && rc < 16)
+                ++rcCount[rc];
             continue;
+        }
         if (frames == 0)
             firstTs = f->timestamp;
         lastTs = f->timestamp;
         ++frames;
         const int luma = frameLuma(f);
         if (luma >= 0) {
-            const int white = luma > 128;
-            if (lastWhite >= 0 && white != lastWhite && nFlips < 256) {
+            // 滞回判定：>180 判白、<76 判黑，中间区保持原状态——
+            // 自动曝光在翻转瞬间的震荡会在单阈值附近抖动出假翻转
+            int white = lastWhite;
+            if (luma > 180)
+                white = 1;
+            else if (luma < 76)
+                white = 0;
+            if (lastWhite < 0) {
+                lastWhite = white;  // 首帧初始化，不记翻转
+            } else if (white != lastWhite && nFlips < 256) {
                 LARGE_INTEGER now = {};
                 QueryPerformanceCounter(&now);
-                flips[nFlips].qpc = now.QuadPart;
-                flips[nFlips].white = white;
-                ++nFlips;
+                // 去抖：距上次翻转 <200ms 的瞬变不记录（真翻转周期 ≥500ms）
+                if (nFlips == 0 ||
+                    (now.QuadPart - lastFlipQpc) * 1000 / freq.QuadPart >= 200) {
+                    flips[nFlips].qpc = now.QuadPart;
+                    flips[nFlips].white = white;
+                    ++nFlips;
+                    lastFlipQpc = now.QuadPart;
+                    lastWhite = white;
+                }
             }
-            lastWhite = white;
         }
     }
     sparkcap_camera_stop(dev);
@@ -129,6 +157,11 @@ int main(int argc, char** argv)
     if (frames < 10 || nFlips < 3) {
         printf("insufficient data: frames=%d flips=%d（确认摄像头对准闪烁窗口）\n", frames,
                nFlips);
+        printf("get_frame rc counts:");
+        for (int r = 0; r < 16; ++r)
+            if (rcCount[r])
+                printf(" %d:%d", r, rcCount[r]);
+        printf("\n");
         return 1;
     }
     const double frameMs =
@@ -146,6 +179,12 @@ int main(int argc, char** argv)
     int nCsv = 0;
     long long q;
     int wv;
+    char header[64];
+    if (fgets(header, sizeof(header), csv) == NULL) {  // 跳过表头 "qpc,white"
+        printf("flash_log.csv empty\n");
+        fclose(csv);
+        return 1;
+    }
     while (nCsv < 4096 && fscanf_s(csv, "%lld,%d", &q, &wv) == 2) {
         csvQpc[nCsv] = q;
         csvWhite[nCsv] = wv;
@@ -153,7 +192,7 @@ int main(int argc, char** argv)
     }
     fclose(csv);
     if (nCsv < nFlips + 1) {
-        printf("csv too short（闪烁器先于测量运行）\n");
+        printf("csv too short: nCsv=%d nFlips=%d（闪烁器先于测量运行）\n", nCsv, nFlips);
         return 1;
     }
 

@@ -185,4 +185,5 @@ JSON 示例：
 3. x86 是否列入首版；
 4. 许可合规结论（工程侧已选 LGPL-3.0 + 依赖声明 NOTICE，法务终审待完成）；
 5. 本地设备热插拔（USB 拔出事件通知，MF 侧有 MEVideoCaptureDeviceRemoved 事件可用）；
+6. **N1 延迟口径**（A5 拍屏法实测挂账，2026-10-29）：J.ZAO W4AS 640×480 NV12@30 全链路实测 median 105–113ms（≈3.3 帧），未达"≤2 帧"标准。全链路含屏幕 VSync（估 17–33ms）、设备曝光/读出（估 30–50ms）、USB 传输（估 10–15ms）等库外环节，库内占比未直接测量——待补库内交付延迟测量（帧时间戳→回调触发/get_frame 返回）后再决策：修订 N1 边界为库内交付，或维持全链路口径并按设备分级；
 6. **屏幕抓屏域**（v2 规划）：DXGI Desktop Duplication / Windows.Graphics.Capture 的枚举模型——显示器/窗口不是 UVC 设备，与 `sparkcap_camera_list_devices` 的关系（并列新入口 or 泛化）待定。

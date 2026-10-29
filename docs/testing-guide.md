@@ -109,12 +109,12 @@
 
 **S3 长稳**：`soak_24h.exe [分钟数]`——三后端轮换（MF/DShow/RTSP 各取 100 帧为轮），每 30s 采样工作集。默认 2 分钟冒烟（进常规回归，仅打印内存不判斜率——首轮组件懒加载的预热增长是正常的）；**夜间验收跑 1440**（24h，判定：失败轮 ≤5%、稳态内存增长 <32 MB）。RTSP 轮的 open/start 失败按 SKIP 计（流服务非受控项，专项由 S1/S2 覆盖）。
 
-**S4 拍屏法**（半自动，需摄像头对着屏幕）：
+**S4 拍屏法**（半自动，需摄像头对着屏幕；操作要点来自 A5 实测）：
 
-1. 运行 `tests/tools/flash_screen.exe [周期ms，默认 500]`——全屏黑白闪烁，翻转时间戳（QPC）写入当前目录 `flash_log.csv`
-2. 摄像头对准闪烁窗口（输出 YUY2/I420/NV12 的设备）
-3. 另开终端运行 `tests/tools/measure_latency.exe [deviceId] [秒数，默认 15]`——取帧检测亮度翻转，与 CSV 的 QPC 对齐相减（QPC 跨进程可比），输出 min/median/max 延迟
-4. 判定：median ≤ 2 帧时间（工具自动按实际帧率折算并输出 PASS/FAIL，N1）
+1. 运行 `tests/tools/flash_screen.exe [周期ms，默认 500]`——全屏窗口**上下半屏黑白互补翻转**（全屏平均亮度恒定，避免纯黑白交替触发 UVC 自动曝光震荡停流），翻转时间戳（QPC）逐条写入当前目录 `flash_log.csv`
+2. 摄像头对准闪烁窗口（输出 YUY2/I420/NV12 的设备；亮度检测仅支持 Y 系格式）
+3. 另开终端运行 `tests/tools/measure_latency.exe [deviceId] [秒数，默认 15] [width] [height] [fps] [fmt]`——取上半屏亮度检测翻转（滞回 + 去抖），与 CSV 的 QPC 对齐相减（QPC 跨进程可比），输出 min/median/max 延迟。带宽受限的 USB 设备应指定稳定档（如 J.ZAO：`1 20 640 480 30 1`——更高分辨率档在 USB 2.0 下可能协商成功但流失败）
+4. 判定：median ≤ 2 帧时间（工具自动按实际帧率折算并输出 PASS/FAIL，N1）。注意拍屏法测得的是**全链路**值（含屏幕 VSync + 设备曝光/读出 + USB 等库外环节）——A5 首轮实测 J.ZAO W4AS 640×480 NV12@30 median 105–113ms（≈3.3 帧）未达标，库内/库外占比未拆分，口径问题挂账（Spec §9-6）
 
 ## 6. 环境依赖与 skip 策略
 
