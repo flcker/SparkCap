@@ -18,10 +18,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 
 # ---- 编译期功能集（技术选型 §10.4：默认全开，官方发布物 = 全功能单 DLL）----
-# ENABLE_VIDEO/AUDIO/SCREEN 随对应域落地引入；当前仅 FFMPEG 可裁剪。
+# ENABLE_VIDEO/AUDIO 随对应域落地引入；当前可裁剪：FFMPEG、SCREEN。
 option(SPARKCAP_ENABLE_FFMPEG "RTSP 网络流后端（FFmpeg + D3D11VA）；OFF 出纯本地采集 DLL" ON)
+option(SPARKCAP_ENABLE_SCREEN "屏幕/显示器抓屏（DXGI Desktop Duplication）" ON)
 
-# ---- 库（目录：src/ 门面与导出清单、src/common/ 跨域设施、src/camera/ 摄像头域）----
+# ---- 库（目录：src/ 门面与导出清单、src/common/ 跨域设施、src/camera/ 摄像头域、src/screen/ 屏幕域）----
 set(SPARKCAP_SRC
     src/facade.cpp
     src/common/capture_common.cpp
@@ -34,6 +35,16 @@ if (SPARKCAP_ENABLE_FFMPEG)
 else()
     # 桩：头文件/ABI/导出面不变（枚举无 RTSP 设备），见 backend_ffmpeg_stub.cpp
     list(APPEND SPARKCAP_SRC src/camera/backend_ffmpeg_stub.cpp)
+endif()
+if (SPARKCAP_ENABLE_SCREEN)
+    list(APPEND SPARKCAP_SRC
+        src/screen/screen_session.cpp   # 会话层：目标模型/降级链/fps 节流/窗口状态轮询
+        src/screen/backend_dxgi.cpp     # 显示器主后端（Desktop Duplication）+ 显示器枚举/定位
+        src/screen/backend_wgc.cpp      # 窗口主后端（WinRT COM 直调）
+        src/screen/backend_gdi.cpp)     # 双目标兜底（BitBlt / PrintWindow）
+else()
+    # 桩：头文件/ABI/导出面不变（list 返回空计数，其余 UNSUPPORTED），见 screen_stub.cpp
+    list(APPEND SPARKCAP_SRC src/screen/screen_stub.cpp)
 endif()
 
 add_library(sparkcap SHARED ${SPARKCAP_SRC})
@@ -49,6 +60,12 @@ target_include_directories(sparkcap
 
 # COM/MF/DShow 系统库：ole32+oleaut32（COM）、mfplat+mf+mfuuid+mfreadwrite（MF）、strmiids（DShow）
 target_link_libraries(sparkcap PRIVATE ole32 oleaut32 mfplat mf mfuuid mfreadwrite strmiids)
+
+if (SPARKCAP_ENABLE_SCREEN)
+    # 屏幕域：dxgi+d3d11（Duplication/WGC 复制链）、user32（枚举/窗口状态轮询）、
+    # gdi32（兜底 BitBlt/PrintWindow）、runtimeobject（WGC 的 WinRT 激活：RoGetActivationFactory/WinString）
+    target_link_libraries(sparkcap PRIVATE dxgi d3d11 user32 gdi32 runtimeobject)
+endif()
 
 if (SPARKCAP_ENABLE_FFMPEG)
     # FFmpeg 头为外部代码：SYSTEM + /external:W0 不受 /W4 /WX 管辖
@@ -67,10 +84,11 @@ endif()
 target_compile_features(sparkcap PRIVATE cxx_std_20)
 
 # 构建库本体时切换为导出端（命名规范 §6）
-# ENABLE_FFMPEG 宏供 facade 的 sparkcap_query_features 报告功能集（§10.4）
+# ENABLE_FFMPEG/ENABLE_SCREEN 宏供 facade 的 sparkcap_query_features 报告功能集（§10.4）
 target_compile_definitions(sparkcap PRIVATE
     SPARKCAP_EXPORTS
-    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>)
+    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>
+    SPARKCAP_ENABLE_SCREEN=$<BOOL:${SPARKCAP_ENABLE_SCREEN}>)
 
 # 静态 CRT（/MT，Debug /MTd）：无运行时 DLL 依赖（Spec §8）
 set_property(TARGET sparkcap PROPERTY

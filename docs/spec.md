@@ -1,7 +1,7 @@
 # SparkCap 规格说明（Spec）
 
-- 版本：1.2（摄像头域 API 加 `sparkcap_camera_` 域前缀，两级前缀结构见命名规范 §2）
-- 日期：2026-10-28
+- 版本：1.4（屏幕域扩展：窗口捕获 WGC + GDI 降级链 + fps 限速 + 窗口状态契约 + 光标/边框选项；`sparkcap_screen_start` 加 fps 参数；错误码 13）
+- 日期：2026-10-29
 - 状态：待评审
 - 关联文档：design.md
 
@@ -35,6 +35,16 @@
 | F9 | 原始格式保真 | 不隐式转换 | 上报格式与源一致 |
 | F10 | 断流重连 | RTSP 断开自动重连 | 重连成功并恢复取帧 |
 | F11 | 能力查询 | 按 deviceId 查询设备支持的分辨率/格式/帧率组合 | 与设备实际能力一致 |
+| F12 | 显示器枚举 | 返回显示器列表（名称/当前分辨率/主屏标记），两段式 | 含虚拟显示器，多屏各自独立条目 |
+| F13 | 打开显示器 | 按 displayId 打开会话；主后端 DXGI，失败自动回落 GDI | 同屏第二 DXGI 会话返回 DEVICE_BUSY（系统单实例限制）；降级后仍出帧 |
+| F14 | 屏幕取帧 | 内容变化即出帧（BGRA/RGB32，原生分辨率）。事件驱动后端（DXGI/WGC）静止返回 TIMEOUT；轮询后端（GDI）定时交付重复帧——**应用不假设帧的唯一性**。旋转屏交付**屏幕所见方向**（竖屏出竖帧，库内按 Rotation 转置，应用无感知） | 变化时持续出帧；静止期 TIMEOUT 或重复帧；竖屏帧宽 < 高 |
+| F15 | 模式切换恢复 | 显示模式切换/独占全屏/TDR 触发 ACCESS_LOST：错误回调通知 + 自动重建 duplication | 切换后恢复取帧 |
+| F16 | 窗口枚举 | 可见顶层窗口快照（hwnd/标题/客户区尺寸），两段式 | 主流应用可见（Win32/UWP/Electron/Qt）；列表为枚举时刻快照 |
+| F17 | 打开窗口 | 按 hwnd 打开捕获；主后端 WGC（Win10 1903+），不可用回落 GDI PrintWindow | 快照后窗口已关闭返回 NOT_FOUND；捕获内容与窗口一致 |
+| F18 | fps 限速 | `start` 传 fps>0 会话层统一节流（后端无关）；0 = 跟随源全速 | 限速后交付帧率 ≤ 设定值 |
+| F19 | 窗口状态 | 最小化：错误回调 `SOURCE_PAUSED` 一次 + get_frame 返回 TIMEOUT（不补假帧），还原自动恢复；关闭：`STREAM_LOST`；resize：帧尺寸跟随 | 三态行为与通知契约一致 |
+| F20 | GDI 降级链 | 显示器 BitBlt / 窗口 PrintWindow（PW_RENDERFULLCONTENT），start 时主后端失败自动回落，应用无感 | 降级路径出帧正常（边角限制见技术选型 §10.5） |
+| F21 | 屏幕域选项 | set_options：光标/边框 best-effort 可配置（默认无光标 + 尽力无边框；不支持静默降级，矩阵见 §4.7） | 未知位返回 OK；start 后设置 UNSUPPORTED；WGC 路径按选项生效 |
 
 ## 4. 接口契约
 
@@ -56,6 +66,17 @@
 | sparkcap_camera_get_frame | 拉取一帧 |
 | sparkcap_camera_stop | 停止采集 |
 | sparkcap_camera_close | 关闭设备 |
+| sparkcap_screen_list_displays | 枚举显示器（两段式，`sparkcap_display_info_t`） |
+| sparkcap_screen_list_windows | 枚举可见顶层窗口（两段式快照，`sparkcap_window_info_t`） |
+| sparkcap_screen_open | 打开显示器会话（主后端 DXGI，失败回落 GDI；同屏第二 DXGI 会话 DEVICE_BUSY） |
+| sparkcap_screen_open_window | 按 hwnd 打开窗口会话（主后端 WGC，不可用回落 GDI；快照后已关闭返回 NOT_FOUND） |
+| sparkcap_screen_set_frame_callback | 注册帧回调（start 前；类型与帧结构复用视频域） |
+| sparkcap_screen_set_error_callback | 注册错误回调（ACCESS_LOST / SOURCE_PAUSED / STREAM_LOST，start 前） |
+| sparkcap_screen_set_options | 设置会话选项（光标/边框，sparkcap_screen_option_t 位掩码；best-effort：不支持的组合静默降级，行为矩阵见 §4.7；未知位忽略返回 OK；start 前，start 后 UNSUPPORTED） |
+| sparkcap_screen_start | 启动捕获（fps：0=跟随源全速，>0 会话层节流；分辨率/格式由目标决定：原生分辨率、BGRA 固定） |
+| sparkcap_screen_get_frame | 拉取一帧（静止期事件驱动后端 TIMEOUT / 轮询后端重复帧——应用不假设帧唯一性） |
+| sparkcap_screen_stop | 停止捕获 |
+| sparkcap_screen_close | 关闭会话 |
 | sparkcap_copy_frame | 深拷贝一帧 |
 | sparkcap_release_frame | 释放帧 |
 
@@ -76,6 +97,7 @@
 | SPARKCAP_ERR_NO_MEMORY | 10 | 内存分配失败 |
 | SPARKCAP_ERR_IN_CALLBACK | 11 | 回调上下文内禁止调用该接口 |
 | SPARKCAP_ERR_INTERNAL | 12 | 内部错误 |
+| SPARKCAP_ERR_SOURCE_PAUSED | 13 | 源暂停（窗口最小化等）：经错误回调通知一次，期间 get_frame 返回 TIMEOUT，恢复后自动继续 |
 
 ### 4.3 帧生命周期
 
@@ -132,6 +154,21 @@
 3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；
 4. 合法序列之外的调用返回相应错误码，不产生未定义行为、不崩溃。
 
+### 4.7 屏幕域选项行为矩阵（best-effort）
+
+`sparkcap_screen_set_options`（会话级，start 前设置；默认 0 = 帧不含光标 + 尽力关闭系统提示边框）。
+**不报错原则：不支持的后端/系统组合静默降级到该后端天然行为，接入方按矩阵设计而非靠返回码探测。**
+未知位忽略返回 OK（位掩码前向兼容惯例）。
+
+| 后端/系统 | CURSOR 位未设（默认） | CURSOR 位设置 | BORDER 位未设（默认） | BORDER 位设置 |
+|---|---|---|---|---|
+| DXGI 显示器 | 不含光标（天然） | 仍不含（不支持，静默） | 无框（天然） | 无框（无意义，静默） |
+| WGC @ Win11 | `IsCursorCaptureEnabled=false`（对齐 DXGI 契约） | `IsCursorCaptureEnabled=true` | `IsBorderRequired=false`（官方黄框关闭路径） | 不调 API（系统默认黄框） |
+| WGC @ Win10 | **仍含光标（接口不存在，关不掉）** | 含 | **仍黄框（关不掉）** | 黄框 |
+| GDI 兜底 | 不含光标（天然） | 仍不含（静默） | 无框（天然） | 无框（静默） |
+
+注：WGC 的光标属性 `IsCursorCaptureEnabled` 在 `IGraphicsCaptureSession2`、边框属性 `IsBorderRequired` 在 `IGraphicsCaptureSession3`（Win11 SDK）；接口不存在（Win10）时两属性全部跳过——帧含光标、黄框保留，属已知行为差异（本机 Win11 实测：默认选项下黄框消失、BORDER 位置时黄框出现）。
+
 ## 5. 非功能指标
 
 | 编号 | 指标 | 目标 |
@@ -186,4 +223,4 @@ JSON 示例：
 4. 许可合规结论（工程侧已选 LGPL-3.0 + 依赖声明 NOTICE，法务终审待完成）；
 5. 本地设备热插拔（USB 拔出事件通知，MF 侧有 MEVideoCaptureDeviceRemoved 事件可用）；
 6. **N1 延迟口径**（A5 拍屏法实测挂账，2026-10-29）：J.ZAO W4AS 640×480 NV12@30 全链路实测 median 105–113ms（≈3.3 帧），未达"≤2 帧"标准。全链路含屏幕 VSync（估 17–33ms）、设备曝光/读出（估 30–50ms）、USB 传输（估 10–15ms）等库外环节，库内占比未直接测量——待补库内交付延迟测量（帧时间戳→回调触发/get_frame 返回）后再决策：修订 N1 边界为库内交付，或维持全链路口径并按设备分级；
-6. **屏幕抓屏域**（v2 规划）：DXGI Desktop Duplication / Windows.Graphics.Capture 的枚举模型——显示器/窗口不是 UVC 设备，与 `sparkcap_camera_list_devices` 的关系（并列新入口 or 泛化）待定。
+7. **屏幕抓屏域**：首版范围已定（v2 落地中，feature/screen 分支）——**显示器 + 窗口合并为 screen 域**（域 = 接入方选用单位"桌面内容捕获"，会话层全同构；显示器/窗口是目标类型分叉 open 入口，同构于音频域 capture/loopback kind）。双降级链：显示器 DXGI→GDI BitBlt、窗口 WGC（Win10 1903+）→GDI PrintWindow(RENDERFULLCONTENT)，start 时主后端失败自动回落。fps 会话层节流（F18）、窗口状态契约（F19：最小化 SOURCE_PAUSED / 关闭 STREAM_LOST / resize 帧跟随）。遗留后置：光标合成、dirty rects 暴露、全屏独占游戏（系统边界）。

@@ -1,7 +1,7 @@
 ; SparkCap 导出清单（docs/SparkCap-命名规范.md §6）
 ; 最终导出面以此白名单为准；SPARKCAP_API 负责源码语义。
 ; 不写 LIBRARY 语句：模块名跟随输出文件（sparkcap.dll / sparkcapd.dll）。
-; 顺序与 include/sparkcap.h 声明块一致（通用层 → 摄像头域 → 帧工具）。
+; 顺序与 include/sparkcap.h 声明块一致（通用层 → 摄像头域 → 屏幕域 → 帧工具）。
 
 EXPORTS
     sparkcap_version
@@ -18,5 +18,16 @@ EXPORTS
     sparkcap_camera_get_frame
     sparkcap_camera_stop
     sparkcap_camera_close
+    sparkcap_screen_list_displays
+    sparkcap_screen_list_windows
+    sparkcap_screen_open
+    sparkcap_screen_open_window
+    sparkcap_screen_set_frame_callback
+    sparkcap_screen_set_error_callback
+    sparkcap_screen_set_options
+    sparkcap_screen_start
+    sparkcap_screen_get_frame
+    sparkcap_screen_stop
+    sparkcap_screen_close
     sparkcap_copy_frame
     sparkcap_release_frame

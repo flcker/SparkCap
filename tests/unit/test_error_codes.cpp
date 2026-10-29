@@ -20,6 +20,7 @@ static void case_error_code_values()
     CHECK_EQ(SPARKCAP_ERR_NO_MEMORY, 10);
     CHECK_EQ(SPARKCAP_ERR_IN_CALLBACK, 11);
     CHECK_EQ(SPARKCAP_ERR_INTERNAL, 12);
+    CHECK_EQ(SPARKCAP_ERR_SOURCE_PAUSED, 13);  // 屏幕域窗口最小化（Spec v1.4 §4.2）
 }
 
 static void case_pixfmt_values()
@@ -51,6 +52,7 @@ static void case_feature_query()
     // 位值是公开 ABI：已发布不可变更
     CHECK_EQ(SPARKCAP_FEATURE_CAMERA, 1);
     CHECK_EQ(SPARKCAP_FEATURE_IP_CAMERA, 2);
+    CHECK_EQ(SPARKCAP_FEATURE_SCREEN, 4);
 
     const uint32_t f = sparkcap_query_features();
     CHECK((f & SPARKCAP_FEATURE_CAMERA) != 0);  // 本地摄像头恒可用
@@ -59,7 +61,13 @@ static void case_feature_query()
 #else
     CHECK((f & SPARKCAP_FEATURE_IP_CAMERA) == 0);
 #endif
-    CHECK((f & ~(SPARKCAP_FEATURE_CAMERA | SPARKCAP_FEATURE_IP_CAMERA)) == 0);  // 无未定义位
+#if SPARKCAP_ENABLE_SCREEN
+    CHECK((f & SPARKCAP_FEATURE_SCREEN) != 0);
+#else
+    CHECK((f & SPARKCAP_FEATURE_SCREEN) == 0);
+#endif
+    CHECK((f & ~(SPARKCAP_FEATURE_CAMERA | SPARKCAP_FEATURE_IP_CAMERA |
+                 SPARKCAP_FEATURE_SCREEN)) == 0);  // 无未定义位
 }
 
 int main()
