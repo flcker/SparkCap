@@ -186,7 +186,7 @@ loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；�
     option(SPARKCAP_ENABLE_VIDEO   "摄像头采集（MF/DShow）"  ON)
     option(SPARKCAP_ENABLE_FFMPEG  "RTSP 网络流 + D3D11VA"   ON)    # 已实现
     option(SPARKCAP_ENABLE_AUDIO   "麦克风/扬声器回采"       OFF)   # 域落地时引入
-    option(SPARKCAP_ENABLE_SCREEN  "屏幕/窗口抓屏"           OFF)   # 域落地时引入
+    option(SPARKCAP_ENABLE_SCREEN  "屏幕/窗口抓屏（DXGI 显示器整屏）"  ON)   # 已实现（v2 首域）
 
 - **默认全开**：官方发布物 = 全功能单 DLL，生态只有一个标准产物（变体由自建者按需触发）
 - 自建者裁剪：`FFMPEG=OFF` 出 **182KB** 纯本地采集 DLL（实测，全功能 3.7MB 的 4.7%；ws2_32 等 FFmpeg 系统依赖一并消失，依赖仅剩 5 个系统 DLL；15 个导出符号与 ABI 不变，实现方式为 CMake 源文件替换 `backend_ffmpeg_stub.cpp`，库代码零 `#if`，libav 头依赖隔离在 `src/pixfmt_av.h`）

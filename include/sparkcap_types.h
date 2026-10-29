@@ -74,6 +74,17 @@ typedef struct sparkcap_device_info_t {
     sparkcap_backend_kind_t  backend;
 } sparkcap_device_info_t;
 
+/* 显示器信息（F12；屏幕域枚举条目）。
+ * id 为当次枚举内的稳定序号，供 sparkcap_screen_open 使用（显示拓扑变化后
+ * 以重新枚举为准）；width/height 为当前桌面分辨率。 */
+typedef struct sparkcap_display_info_t {
+    int  id;         /* displayId */
+    char name[256];  /* 显示器友好名（回退 GDI 设备名，如 \\.\DISPLAY1） */
+    int  width;      /* 当前分辨率（DesktopCoordinates） */
+    int  height;
+    int  is_primary; /* 主显示器 */
+} sparkcap_display_info_t;
+
 /* 帧（技术选型 §5；内存由库分配、库释放，应用不得 free）。
  * stride 符号表示行序：正 = top-down，负 = bottom-up（data 指向最底行）；
  * RGB 系格式通常为 bottom-up。压缩格式（MJPG）stride 恒 0。 */
@@ -121,7 +132,8 @@ typedef void (*sparkcap_log_cb)(sparkcap_device_t* device,
 typedef enum sparkcap_feature_t {
     SPARKCAP_FEATURE_CAMERA    = (1 << 0),  /* 本地摄像头（USB/虚拟设备，MF/DShow） */
     SPARKCAP_FEATURE_IP_CAMERA = (1 << 1),  /* IP 摄像头（网络流接入，当前 rtsp://） */
-    /* 追加位预留：v2 域（AUDIO/SCREEN）与未来接入技术（如 NDI）落地时加性扩展 */
+    SPARKCAP_FEATURE_SCREEN    = (1 << 2),  /* 屏幕抓屏（DXGI Desktop Duplication） */
+    /* 追加位预留：v2 域（AUDIO）与未来接入技术（如 NDI）落地时加性扩展 */
 } sparkcap_feature_t;
 
 #ifdef __cplusplus

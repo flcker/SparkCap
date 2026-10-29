@@ -56,7 +56,8 @@
           str_util.h              # 宽字符转换
           json_config.*           # sparkcap.json 库级配置加载（按域扩展配置段，§10.2）
           pixfmt_map.h / pixfmt_av.h  # 像素格式映射集（库级 pixfmt 枚举 ↔ 后端原生格式；屏幕域 DXGI 映射后续加入）
-        camera/               # 摄像头域（v2 落地 audio/ screen/ 同构）
+        camera/               # 摄像头域（v2 落地 audio/ 同构）
+        screen/               # 屏幕域（DXGI 显示器整屏捕获，v2 首域）
           device_manager.cpp/.h   # 枚举合并去重
           capture_backend.h       # 域后端抽象（ICaptureBackend/Session）
           backend_mf.* / backend_dshow.* / backend_ffmpeg.* / backend_ffmpeg_stub.cpp

@@ -2,6 +2,7 @@
 out/
 build/
 build-min/
+build-noscreen/
 
 # CMake
 CMakeCache.txt

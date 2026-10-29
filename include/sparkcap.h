@@ -90,6 +90,51 @@ SPARKCAP_API int sparkcap_camera_stop(sparkcap_device_t* device);
    禁止在回调内调用（返回 IN_CALLBACK）。 */
 SPARKCAP_API int sparkcap_camera_close(sparkcap_device_t* device);
 
+/* ==================== 屏幕域：显示器捕获（DXGI Desktop Duplication） ==================== */
+
+/* 枚举显示器（F12）。两段式：displays 为 NULL 时 *in_out_count 返回总数；
+   否则写入至多 *in_out_count 项并更新为实际总数。 */
+SPARKCAP_API int sparkcap_screen_list_displays(sparkcap_backend_t* backend,
+                                        sparkcap_display_info_t* displays,
+                                        int* in_out_count);
+
+/* 打开显示器 duplication 会话（F13）；同屏第二会话返回 DEVICE_BUSY
+   （系统单实例限制）。 */
+SPARKCAP_API int sparkcap_screen_open(sparkcap_backend_t* backend,
+                               int display_id,
+                               sparkcap_device_t** out_device);
+
+/* 注册帧回调（F5）；须在 start 前注册，start 后返回 UNSUPPORTED（Spec §4.5）。
+   回调类型与帧结构复用视频域。 */
+SPARKCAP_API int sparkcap_screen_set_frame_callback(sparkcap_device_t* device,
+                                             sparkcap_frame_cb cb,
+                                             void* userdata);
+
+/* 注册错误回调（Spec §4.5）：ACCESS_LOST（模式切换/独占全屏/TDR）等流中断通知
+   （STREAM_LOST）；自动重建期间不通知恢复（帧回调恢复交付即恢复）。
+   须在 start 前注册。 */
+SPARKCAP_API int sparkcap_screen_set_error_callback(sparkcap_device_t* device,
+                                             sparkcap_error_cb cb,
+                                             void* userdata);
+
+/* 启动捕获（F14）——无偏好参数：分辨率/格式由显示器决定
+   （原生分辨率、RGB32 固定）。 */
+SPARKCAP_API int sparkcap_screen_start(sparkcap_device_t* device);
+
+/* 拉取一帧（F14）；timeout_ms 毫秒超时；静止桌面返回 TIMEOUT 为正常语义
+   （桌面无变化即无新帧），帧在下一次 get_frame 前有效（Spec §4.3）。 */
+SPARKCAP_API int sparkcap_screen_get_frame(sparkcap_device_t* device,
+                                    sparkcap_frame_t** out_frame,
+                                    int timeout_ms);
+
+/* 停止捕获（F6）；等待在途回调返回后才完成，此后不再产生新回调（Spec §4.4）。
+   禁止在回调内调用（返回 IN_CALLBACK）。 */
+SPARKCAP_API int sparkcap_screen_stop(sparkcap_device_t* device);
+
+/* 关闭会话（F7）；句柄立即失效（Spec §4.5）。
+   禁止在回调内调用（返回 IN_CALLBACK）。 */
+SPARKCAP_API int sparkcap_screen_close(sparkcap_device_t* device);
+
 /* ==================== 帧工具（库级帧类型，v2 屏幕域复用） ==================== */
 
 /* 深拷贝一帧；跨线程/跨调用持有用，用后 release_frame（Spec §4.3）。

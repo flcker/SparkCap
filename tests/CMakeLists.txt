@@ -28,7 +28,8 @@ set_tests_properties(unit_copy PROPERTIES LABELS "unit")
 add_executable(test_unit_error unit/test_error_codes.cpp)
 target_link_libraries(test_unit_error PRIVATE sparkcap)
 target_compile_definitions(test_unit_error PRIVATE
-    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>)
+    SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>
+    SPARKCAP_ENABLE_SCREEN=$<BOOL:${SPARKCAP_ENABLE_SCREEN}>)
 target_compile_options(test_unit_error PRIVATE /W4 /WX /utf-8)
 add_test(NAME unit_error COMMAND test_unit_error)
 set_tests_properties(unit_error PROPERTIES LABELS "unit")
@@ -64,6 +65,7 @@ sparkcap_integration_test(mf)
 sparkcap_integration_test(dshow)
 sparkcap_integration_test(multidevice)
 sparkcap_integration_test(rtsp)
+sparkcap_integration_test(screen)
 
 # ---- soak（M4 验收专项：重连/长稳）----
 add_executable(test_soak_reconnect soak/test_reconnect.cpp)

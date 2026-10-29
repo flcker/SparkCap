@@ -6,6 +6,7 @@
 #include "sparkcap.h"
 
 #include "camera/device_manager.h"
+#include "screen/backend_dxgi.h"
 
 #include <mfapi.h>
 #include <objbase.h>
@@ -16,6 +17,7 @@
 #include <mutex>
 #include <new>
 #include <unordered_set>
+#include <vector>
 
 // ---- 后端实例实体（opaque 句柄的内部定义）----
 
@@ -34,7 +36,9 @@ struct sparkcap_backend {
 
 struct sparkcap_device {
     sparkcap_backend_t* owner = nullptr;
-    std::unique_ptr<sparkcap::ICaptureSession> session;
+    std::unique_ptr<sparkcap::ICaptureSession> session;      // 摄像头域
+    std::unique_ptr<sparkcap::SparkCapScreenSession> screen; // 屏幕域
+    int screenDisplayId = -1;  // 屏幕域打开的 displayId（同屏占用判定，F13）
     sparkcap_frame_t frame = {};  // get_frame 的出参指向这里
 };
 
@@ -203,8 +207,8 @@ int sparkcap_camera_set_frame_callback(sparkcap_device_t* device, sparkcap_frame
         return SPARKCAP_ERR_INVALID_ARG;
     if (sparkcap::g_inFrameCallback)
         return SPARKCAP_ERR_IN_CALLBACK;
-    if (!validDevice(device->owner, device))
-        return SPARKCAP_ERR_INVALID_HANDLE;
+    if (!validDevice(device->owner, device) || device->session == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;  // 含跨域句柄（屏幕域设备）
     try {
         return device->session->setCallback(device, cb, userdata);
     } catch (...) {
@@ -219,7 +223,7 @@ int sparkcap_camera_set_error_callback(sparkcap_device_t* device, sparkcap_error
         return SPARKCAP_ERR_INVALID_ARG;
     if (sparkcap::g_inFrameCallback)
         return SPARKCAP_ERR_IN_CALLBACK;
-    if (!validDevice(device->owner, device))
+    if (!validDevice(device->owner, device) || device->session == nullptr)
         return SPARKCAP_ERR_INVALID_HANDLE;
     try {
         return device->session->setErrorCallback(device, cb, userdata);
@@ -242,7 +246,7 @@ int sparkcap_camera_start(sparkcap_device_t* device, int width, int height,
 {
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
-    if (!validDevice(device->owner, device))
+    if (!validDevice(device->owner, device) || device->session == nullptr)
         return SPARKCAP_ERR_INVALID_HANDLE;
     try {
         return device->session->start(width, height, fmt, fps);
@@ -260,7 +264,7 @@ int sparkcap_camera_get_frame(sparkcap_device_t* device, sparkcap_frame_t** outF
     *outFrame = nullptr;
     if (device == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
-    if (!validDevice(device->owner, device))
+    if (!validDevice(device->owner, device) || device->session == nullptr)
         return SPARKCAP_ERR_INVALID_HANDLE;
     try {
         device->frame = {};
@@ -281,7 +285,7 @@ int sparkcap_camera_stop(sparkcap_device_t* device)
         return SPARKCAP_ERR_INVALID_ARG;
     if (sparkcap::g_inFrameCallback)
         return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
-    if (!validDevice(device->owner, device))
+    if (!validDevice(device->owner, device) || device->session == nullptr)
         return SPARKCAP_ERR_INVALID_HANDLE;
     try {
         return device->session->stop();
@@ -297,13 +301,192 @@ int sparkcap_camera_close(sparkcap_device_t* device)
     if (sparkcap::g_inFrameCallback)
         return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
     sparkcap_backend_t* backend = device->owner;
-    if (backend == nullptr || !validDevice(backend, device))
-        return SPARKCAP_ERR_INVALID_HANDLE;
+    if (backend == nullptr || !validDevice(backend, device) || device->session == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;  // 含跨域句柄（屏幕域走 sparkcap_screen_close）
     {
         std::lock_guard<std::mutex> lk(backend->deviceMutex);
         backend->devices.erase(device);
     }
     delete device;  // ~MfSession：stop → 释放 reader/source/回调
+    return SPARKCAP_ERR_OK;
+}
+
+// ---- 屏幕域（F12–F15，DXGI Desktop Duplication）----
+
+int sparkcap_screen_list_displays(sparkcap_backend_t* backend,
+                                  sparkcap_display_info_t* displays,
+                                  int* inOutCount)
+{
+    if (backend == nullptr || inOutCount == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    try {
+        std::vector<sparkcap_display_info_t> list;
+        const int rc = sparkcap::screenListDisplays(list);
+        if (rc != SPARKCAP_ERR_OK) {
+            *inOutCount = 0;
+            return rc;
+        }
+        const int total = static_cast<int>(list.size());
+        if (displays == nullptr) {
+            *inOutCount = total;
+            return SPARKCAP_ERR_OK;
+        }
+        const int fit = (*inOutCount < total) ? *inOutCount : total;
+        for (int i = 0; i < fit; ++i)
+            displays[i] = list[i];
+        *inOutCount = total;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_open(sparkcap_backend_t* backend, int displayId, sparkcap_device_t** outDevice)
+{
+    if (outDevice == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *outDevice = nullptr;
+    if (backend == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+
+    try {
+        // 同屏第二会话（F13，系统单实例限制）：注册表内查重
+        {
+            std::lock_guard<std::mutex> lk(backend->deviceMutex);
+            for (const sparkcap_device_t* d : backend->devices) {
+                if (d->screen != nullptr && d->screenDisplayId == displayId)
+                    return SPARKCAP_ERR_DEVICE_BUSY;
+            }
+        }
+
+        auto* device = new (std::nothrow) sparkcap_device();
+        if (device == nullptr)
+            return SPARKCAP_ERR_NO_MEMORY;
+
+        std::unique_ptr<sparkcap::SparkCapScreenSession> session;
+        const int rc = sparkcap::screenOpenSession(displayId, &session);
+        if (rc != SPARKCAP_ERR_OK || session == nullptr) {
+            delete device;
+            return rc;
+        }
+        device->owner = backend;
+        device->screen = std::move(session);
+        device->screenDisplayId = displayId;
+
+        {
+            std::lock_guard<std::mutex> lk(backend->deviceMutex);
+            backend->devices.insert(device);
+        }
+        *outDevice = device;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_set_frame_callback(sparkcap_device_t* device, sparkcap_frame_cb cb,
+                                       void* userdata)
+{
+    if (device == nullptr || cb == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;
+    if (!validDevice(device->owner, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->screen->setCallback(device, cb, userdata);
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_set_error_callback(sparkcap_device_t* device, sparkcap_error_cb cb,
+                                       void* userdata)
+{
+    if (device == nullptr || cb == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;
+    if (!validDevice(device->owner, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->screen->setErrorCallback(device, cb, userdata);
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_start(sparkcap_device_t* device)
+{
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (!validDevice(device->owner, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->screen->start();
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_get_frame(sparkcap_device_t* device, sparkcap_frame_t** outFrame,
+                              int timeoutMs)
+{
+    if (outFrame == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *outFrame = nullptr;
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (!validDevice(device->owner, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        device->frame = {};
+        const int rc = device->screen->getFrame(&device->frame, timeoutMs);
+        if (rc == SPARKCAP_ERR_OK)
+            *outFrame = &device->frame;  // 有效期至下次 get_frame/stop/close（Spec §4.3）
+        return rc;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_stop(sparkcap_device_t* device)
+{
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
+    if (!validDevice(device->owner, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->screen->stop();
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_screen_close(sparkcap_device_t* device)
+{
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
+    sparkcap_backend_t* backend = device->owner;
+    if (backend == nullptr || !validDevice(backend, device) || device->screen == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    {
+        std::lock_guard<std::mutex> lk(backend->deviceMutex);
+        backend->devices.erase(device);
+    }
+    delete device;  // ~SparkCapScreenSession：stop → 释放采集链
     return SPARKCAP_ERR_OK;
 }
 
@@ -356,6 +539,9 @@ uint32_t sparkcap_query_features(void)
     uint32_t features = SPARKCAP_FEATURE_CAMERA;
 #if SPARKCAP_ENABLE_FFMPEG
     features |= SPARKCAP_FEATURE_IP_CAMERA;
+#endif
+#if SPARKCAP_ENABLE_SCREEN
+    features |= SPARKCAP_FEATURE_SCREEN;
 #endif
     return features;
 }
