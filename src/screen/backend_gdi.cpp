@@ -131,12 +131,16 @@ int ScreenBackendGdi::start()
         int height = 0;
         if (!screenLocateDisplay(m_displayId, m_deviceName, &desktop, &width, &height))
             return SPARKCAP_ERR_NOT_FOUND;
-        if (!createDib(width, height))
-            return SPARKCAP_ERR_START_FAILED;
         // 输出设备 DC（原点即该显示器左上角；失败 → START_FAILED，会话层
         // 已无双后端可落 → 返回主后端错误码）
         m_screenDc = CreateDCW(m_deviceName, nullptr, nullptr, nullptr);
         if (m_screenDc == nullptr)
+            return SPARKCAP_ERR_START_FAILED;
+        // 帧尺寸以 DC 实际尺寸为准（DPI/旋转下与枚举逻辑尺寸可能不一致；
+        // BitBlt 逐像素拷贝必须按 DC 尺寸建 DIB，否则内容截断）
+        width = GetDeviceCaps(m_screenDc, HORZRES);
+        height = GetDeviceCaps(m_screenDc, VERTRES);
+        if (width <= 0 || height <= 0 || !createDib(width, height))
             return SPARKCAP_ERR_START_FAILED;
     }
     m_nextTick = gdiNow100ns();  // 立即采首帧

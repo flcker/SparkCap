@@ -206,6 +206,7 @@ loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；�
 | 窗口 | WGC（Win10 1903+，DWM 合成层） | GDI PrintWindow（PW_RENDERFULLCONTENT） | WGC 不可用（旧系统/策略/窗口类型） |
 
 - **WGC 覆盖面**：DWM 合成层对渲染技术不敏感（Win32/UWP/Electron/Qt/D3D/OpenGL/Vulkan 窗口化全兼容）；PrintWindow+RENDERFULLCONTENT 同样直取 DWM 内容，硬件加速窗口大部分兼容
+- **DXGI 旋转屏语义**：duplication 交付的桌面纹理恒为面板原生方向（landscape），`ModeDesc` 却是旋转后的桌面尺寸、`Rotation` 指示旋转方向——库内按 Rotation 转置读出，交付屏幕所见方向（竖屏出竖帧，与枚举 DesktopCoordinates 方向一致）；GDI/WGC 路径天然交付桌面方向，无需处理
 - **GDI 后端如实限制**：CPU 拷贝（4K 帧 ~33MB）；旧 BitBlt 仅 GDI 窗口（仅作最后手段）
 - **系统边界（库不绕过）**：管理员权限窗口需捕获进程同权限（UIPI）；最小化窗口 DWM 不合成；全屏独占游戏 DWM 不参与；系统黄框（防偷拍）——Win11 经 `IsBorderRequired=false` 官方 API 关闭（本库默认尽力关闭，F21 矩阵），Win10 仅系统级注册表可关（库不实现，如实保留黄框）
 
