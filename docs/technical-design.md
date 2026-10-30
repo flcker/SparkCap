@@ -181,11 +181,13 @@ flowchart TD
 
 loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；仅当应用把麦克风播放出来（侧音/侦听/虚拟调音台混音）才会进入端点混音。库不做隐式混音——"系统声音 + 麦克风"开两个会话独立成流，混音在应用侧。
 
+（本节为 v2 预留要点；落地设计见 §10.6——四要点的最终决策：枚举分开两个 list 而非 kind 字段、静默期合成静音帧、格式演化为双模式（NULL 原样 / 显式指定系统侧转换）、进程级回采仍在 v2+ 候选。）
+
 ### 10.4 编译期功能集（CMake option）
 
     option(SPARKCAP_ENABLE_VIDEO   "摄像头采集（MF/DShow）"  ON)
     option(SPARKCAP_ENABLE_FFMPEG  "RTSP 网络流 + D3D11VA"   ON)    # 已实现
-    option(SPARKCAP_ENABLE_AUDIO   "麦克风/扬声器回采"       OFF)   # 域落地时引入
+    option(SPARKCAP_ENABLE_AUDIO   "麦克风/扬声器回采（WASAPI）"  ON)   # 落地中（v2 第二域，§10.6）
     option(SPARKCAP_ENABLE_SCREEN  "屏幕/窗口抓屏（DXGI 显示器整屏）"  ON)   # 已实现（v2 首域）
 
 - **默认全开**：官方发布物 = 全功能单 DLL，生态只有一个标准产物（变体由自建者按需触发）
@@ -230,3 +232,56 @@ loopback 默认不包含麦克风声音（麦克风是独立 capture 流）；�
 **API 族（11 符号，导出 16 → 27）**：`sparkcap_screen_list_displays / list_windows / open / open_window / set_frame_callback / set_error_callback / set_options / start / get_frame / stop / close`。帧回调类型（`sparkcap_frame_cb`）、帧结构（`sparkcap_frame_t`）、帧工具（`sparkcap_copy_frame` / `sparkcap_release_frame`，通用层）直接复用。枚举条目 `sparkcap_display_info_t`（id/name/width/height/is_primary）与 `sparkcap_window_info_t`（hwnd/title/width/height——窗口列表为枚举时刻快照，open 时已关闭返回 NOT_FOUND）。
 
 **实现路径**：`src/screen/`（与 `src/camera/` 同构的域目录）——`backend_dxgi.*`（显示器主后端：AcquireNextFrame → staging Map 按 RowPitch 逐行拷出 → 立即 ReleaseFrame）、`backend_wgc.*`（窗口主后端：WinRT COM 直调，零 C++/WinRT 包依赖）、`backend_gdi.*`（双目标兜底：BitBlt/PrintWindow 定时轮询）、会话层（目标类型 + 后端选择 + fps 节流 + 窗口状态轮询 + 环形队列复用 `common/frame_queue.h` + CallbackGuard）。时间戳 QPC→100ns 与 camera 域同源（A/V 时钟域前提）。`SPARKCAP_FEATURE_SCREEN = (1 << 2)` 功能位 + `SPARKCAP_ENABLE_SCREEN` CMake option（默认 ON，对齐 §10.4 默认全开）。
+
+### 10.6 音频域落地设计（v2 第二域，Spec v1.5）
+
+**范围（首版）**：麦克风采集（capture）+ 扬声器回采（loopback）合并为 audio 域——域 = 接入方选用单位"音频采集"（录制/推流的 A/V 之 A，与摄像头域组合即 §10.1 的单库回报）。kind 分叉 open 入口（`open` / `open_loopback`，同构屏幕域 open/open_window 先例，§10.3-1 预留的 kind 字段在落地时演化为分开枚举 + 分叉 open——与 list_displays/list_windows 同构）；会话层（start/get_frame/stop/close/回调注册）全同构复用。
+
+**设备覆盖（端点抽象的免费回报）**：WASAPI 枚举的是端点而非驱动——USB 麦克风（通用 USB Audio 类驱动）、USB/外置声卡（其输入进 eCapture、输出进 eRender 可作回采目标）、蓝牙耳机/音箱（HFP/A2DP）、HDMI/DP 显卡音频、虚拟声卡（VB-Cable 等）全部统一呈现为端点，`list_microphones`/`list_loopbacks` 天然覆盖，实现零特殊处理。装了厂商 ASIO 驱动的专业声卡同理会装标准 WDM 驱动呈现端点（ASIO 是并行通道非替代），WASAPI 照常可见。多通道折混/HFP 协议上限等边界见文末。
+
+**后端：WASAPI 单链，无降级**（与既有降级哲学的显式分歧，须论证）：
+
+Windows 音频 API 全景（采集能力）：
+
+| API | 麦克风 | 回采（loopback） | Vista 后的实现真相 |
+|---|---|---|---|
+| waveIn / waveOut（WinMM） | ✅ | ❌ | WASAPI 兼容层包装 |
+| DirectSound | ✅ | ❌ | capture 路径映射 WASAPI；播放硬件加速已移除 |
+| **WASAPI**（Vista 2007） | ✅ | ✅ **唯一官方路** | 本体（音频引擎会话层） |
+| MF SourceReader | ✅ | ❌（无标准 loopback 源） | 内部走 WASAPI，纯增管线厚度 |
+| AudioGraph（WinRT） | ✅ | — | UWP 专属，C 门面需 WinRT 直调，排除 |
+
+- **伪降级判定**：dsound/waveIn 能初始化成功的场景 WASAPI 必然成功（同一栋楼换个门）；失败场景（独占占用/无端点/远程会话）两者同样失败——兜底零增益。区别于既有降级链的本质：WGC→GDI 有真实版本边界（1903）、MF→DShow 有真实驱动覆盖差异；音频不存在此类边界
+- **loopback 是 WASAPI 独占能力**（`AUDCLNT_STREAMFLAGS_LOOPBACK` on eRender endpoint，共享模式专属）：数字级回环系统混音，与扬声器实际出声无关（区别于麦克风录音的空气传导）。其他 API 想采系统输出只能装虚拟声卡驱动（驱动签名级侵入，完全不同量级）
+- **跨平台库调研**（PortAudio / RtAudio，均为成熟选择，Windows 后端集 = WASAPI + DirectSound + WMME + WDM-KS + ASIO）。保留多后端的三个原因对采集库逐条不成立：① 历史兼容（XP/Vista 时代——本库目标 Win10/11）；② 专业低延迟（WDM-KS/ASIO 演奏级 <5ms——采集 10ms 级共享模式足够，且 ASIO 需用户装专业声卡驱动 + 闭源 SDK 许可受限）；③ 防御性后端切换（跨平台库策略——单后端无此负担）。**且两者都无 loopback 能力**：能用它们做的（麦克风），WASAPI 直接做更薄；它们做不了的（回采），还是得裸调 WASAPI——带着抽象层反而碍事
+- **失败场景走错误语义不走换后端**：独占模式占用 → `DEVICE_BUSY`；端点消失（拔出/禁用）→ `STREAM_LOST`；无音频服务/远程会话无端点 → `START_FAILED`
+- 独占模式（exclusive）不用：低延迟以抢占全局混音为代价（其他应用没声），采集场景共享模式 + 事件驱动延迟已够（~10ms 级）
+
+**格式模型（双模式，F24）**：
+
+- **NULL（默认）= mix format 原样**：共享模式系统混音格式（典型 float32/48kHz/2ch）零转换交付——严格延续 F9 保真
+- **指定 `{sample_format, sample_rate, channels}`** = `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY`（Win7+）：转换由系统音频引擎完成，**库不写任何重采样/格式转换代码**
+- **上报恒为实际交付格式**：转换是使用方显式要求，且上报与交付一致——F9"不隐式转换"的规则精神是"库不擅自决定"，显式指定 + truthful 上报不违反（摄像头域的格式协商同构：指定了 YUY2 上报 YUY2）
+- 声道约束（**待实现期实测验证**）：AUTOCONVERTPCM 文档仅承诺采样格式与采样率转换，声道行为未明确——设计暂定"指定声道数须等于 mix format 声道数（典型 2）"，实现期实测系统实际行为后修正文档；声道折混需求后置
+- mix format 预览进枚举条目（F22/F23）：UI 直接展示"48kHz 2ch"，使用方据此决定是否需要指定格式
+
+**静音帧契约（F25，与屏幕域 F14 的哲学分歧）**：
+
+| | 屏幕（F14） | 音频 loopback（F25） |
+|---|---|---|
+| 无新内容时 | TIMEOUT（静止 = 内容不变） | **合成静音帧**（无声 = 内容是静音） |
+| 理由 | 视频静止丢帧 = 节流，下游无感 | 音频断流对编码器/推流/录制是事故——连续性是刚性需求 |
+
+- 合成节奏：静默期（WASAPI 不出 packet）按设备 packet 周期定时交付全零帧，timestamp 单调连续——直播/录制的流不断
+- 麦克风路径无合成需求：设备持续出 packet（含环境噪声底）；异常静默属设备异常，走错误路径
+
+**边界（如实记录，不绕过不假装支持）**：
+
+- 多通道专业声卡（8in/8out）：共享模式折混到 mix format（典型 2ch）——多轨原始采集是 DAW 场景（独占模式），不做
+- 蓝牙 HFP 免提协议物理上限 16kHz/1ch——能采，mix format 如实上报（保真规则天然处理）
+- 热插拔：拔出 → `STREAM_LOST`（同摄像头语义）；主动监听 `IMMNotificationClient` 是热插拔事件 API 的活（roadmap v1.x 排队，三域共用）
+- loopback 默认不含麦克风声音（端点混音原理，§10.3）；"系统声 + 麦克风" = 两个会话独立成流，混音在应用侧
+
+**API 族（12 符号，导出 27 → 39）**：`sparkcap_audio_list_microphones / list_loopbacks / open / open_loopback / set_frame_callback / set_error_callback / start / get_frame / stop / close / copy_frame / release_frame`。独立帧结构 `sparkcap_audio_frame_t`（data/size/timestamp + samples_per_channel/sample_rate/channels/sample_format，interleaved）与回调类型 `sparkcap_audio_frame_cb`——不与视频 `sparkcap_frame_t` 混用（维度语义不同：samples vs width/height），域级帧工具。枚举条目 `sparkcap_audio_device_info_t`（id[256] 字符串 / name[128] / is_default / mix format 预览三项）。**id 用字符串**（不跟 camera 的 int 序号）：音频设备拓扑变化最频繁（蓝牙连接/断开），WASAPI endpoint ID 是原生稳定标识，open 按串匹配无需"重枚举对齐序号"。`start(dev, fps)` 签名三域同构，fps 仅 0 合法（采样率即节流）。
+
+**实现路径**：`src/audio/`——`backend_wasapi.*`（单后端：IMMDeviceEnumerator 枚举 eCapture/eRender 端点 → IAudioClient 共享模式事件驱动 Initialize → IAudioCaptureClient GetBuffer/ReleaseBuffer 循环；loopback 加 LOOPBACK flag 与静音帧合成）；会话层复用 `common/frame_queue.h` + CallbackGuard，时间戳 QPC→100ns 三域同源。`SPARKCAP_FEATURE_AUDIO = (1 << 3)` 功能位 + `SPARKCAP_ENABLE_AUDIO` CMake option（默认 ON，对齐 §10.4 默认全开）。
