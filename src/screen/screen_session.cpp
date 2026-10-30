@@ -437,17 +437,4 @@ bool SparkCapScreenSession::backendShouldStopTrampoline(void* ctx)
     return !static_cast<SparkCapScreenSession*>(ctx)->m_running.load();
 }
 
-// QPC → 100ns 单位（与 camera 域时间戳同源同单位：MF 原生 100ns /
-// DShow 秒×1e7 / FFmpeg rescale 至 1/10^7 s）
-int64_t SparkCapScreenSession::now100ns()
-{
-    LARGE_INTEGER freq = {};
-    LARGE_INTEGER now = {};
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&now);
-    if (freq.QuadPart <= 0)
-        return 0;
-    return static_cast<int64_t>((now.QuadPart * 10000000LL) / freq.QuadPart);
-}
-
 } // namespace sparkcap

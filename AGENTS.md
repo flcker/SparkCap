@@ -1,6 +1,6 @@
 # SparkCap 项目约定
 
-Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优先、DShow 兜底、FFmpeg 负责网络流 RTSP），**屏幕域落地中**（DXGI Desktop Duplication 显示器整屏捕获，feature/screen 分支），麦克风/扬声器回采为规划域——路线图与架构预留见 docs/roadmap.md 与技术选型 §10。API 风格延续 videoInput 的简单直接。
+Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优先、DShow 兜底、FFmpeg 负责网络流 RTSP），**屏幕域已交付**（显示器 + 窗口合并域：DXGI/WGC 主链 + GDI 兜底，已合并 main），**音频域落地中**（麦克风 + 扬声器回采，WASAPI 单链，feature/audio 分支）——路线图与架构预留见 docs/roadmap.md 与技术选型 §10。API 风格延续 videoInput 的简单直接。
 
 ## 必读文档（v1.1，均为开发与验收依据）
 

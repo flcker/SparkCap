@@ -21,4 +21,16 @@ inline void toUtf8(const wchar_t* src, char* dst, size_t cap)
         dst[cap - 1] = '\0';                   // 恰好写满：强制结尾
 }
 
+// UTF-8 → 宽字符，写入 dst（cap 个 wchar）；转换失败或超长时截断，保证 NUL 结尾。
+inline void toWide(const char* src, wchar_t* dst, size_t cap)
+{
+    if (cap == 0)
+        return;
+    const int n = MultiByteToWideChar(CP_UTF8, 0, src, -1, dst, static_cast<int>(cap));
+    if (n <= 0)
+        dst[0] = L'\0';
+    else if (static_cast<size_t>(n) == cap)
+        dst[cap - 1] = L'\0';
+}
+
 } // namespace sparkcap

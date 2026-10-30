@@ -31,16 +31,15 @@ M1–M4 全部交付（12/12 测试全绿）。验收进展：
 - 实现路径：`src/screen/`{screen_session, backend_dxgi, backend_wgc, backend_gdi}；`SPARKCAP_FEATURE_SCREEN` 功能位 + `SPARKCAP_ENABLE_SCREEN` option（默认 ON）
 - 后置项：光标合成（WGC 之外的显式光标绘制）、dirty rects 暴露
 
-### 音频域（后续）
+### 音频域（落地中：feature/audio 分支，Spec v1.5 / 技术选型 §10.6）
 
-- **麦克风**（WASAPI capture）+ **扬声器回采**（loopback，采集电脑播放的声音）
-- 新 API 族 `sparkcap_audio_*`：音频帧结构与视频 frame_t 不兼容，独立帧结构与生命周期
-- 关键设计输入（技术选型 §10.3）：
-  - 枚举条目带 kind（capture / loopback；loopback 枚举 eRender 输出端点）
-  - 静默期语义契约化（无播放时 TIMEOUT or 补零帧——屏幕域"静止桌面 TIMEOUT"为同构先例，Spec F14）
-  - 格式跟随（loopback 格式由系统混音器决定，中途变化 → 重协商/通知）
-  - A/V 统一时钟域（与视频帧时间戳同源，录制/推流直接对齐）
-- 回调/错误/日志路由复用现有机制
+- **麦克风**（WASAPI capture）+ **扬声器回采**（loopback，采集电脑播放的声音）合并 audio 域，kind 分叉 open（同构屏幕域先例）
+- **WASAPI 单链，无降级**（技术选型 §10.6 论证）：dsound/waveIn 为 WASAPI 兼容层包装（伪降级）；loopback 全系统唯一官方路径；跨平台库（PortAudio/RtAudio）多后端三原因对采集库不成立且均无 loopback
+- **格式双模式**（F24）：open 的 format 参数可空——NULL = mix format 原样（保真）；指定 = 系统侧 AUTOCONVERTPCM；上报恒为实际交付格式
+- **静音帧契约**（F25）：loopback 静默期合成静音帧（时间戳连续，录制/推流流不断）——与屏幕域"静止 TIMEOUT"的哲学分歧已论证
+- 独立帧结构 `sparkcap_audio_frame_t` + 域级帧工具（12 符号，导出 27 → 39）；端点字符串 id（蓝牙插拔稳定）
+- A/V 统一时钟域（与视频帧时间戳 100ns 同源，录制/推流直接对齐）
+- 回调/错误/日志路由复用现有机制；边界如实记录（专业声卡多通道折混、蓝牙 HFP 16k/1ch、热插拔仅 STREAM_LOST）
 
 ### 组合场景（单库的回报）
 

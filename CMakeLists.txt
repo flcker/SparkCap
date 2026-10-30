@@ -18,11 +18,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out/x64/$<CONFIG>")
 
 # ---- 编译期功能集（技术选型 §10.4：默认全开，官方发布物 = 全功能单 DLL）----
-# ENABLE_VIDEO/AUDIO 随对应域落地引入；当前可裁剪：FFMPEG、SCREEN。
+# 当前可裁剪：FFMPEG、SCREEN、AUDIO。
 option(SPARKCAP_ENABLE_FFMPEG "RTSP 网络流后端（FFmpeg + D3D11VA）；OFF 出纯本地采集 DLL" ON)
 option(SPARKCAP_ENABLE_SCREEN "屏幕/显示器抓屏（DXGI Desktop Duplication）" ON)
+option(SPARKCAP_ENABLE_AUDIO "麦克风/扬声器回采（WASAPI）" ON)
 
-# ---- 库（目录：src/ 门面与导出清单、src/common/ 跨域设施、src/camera/ 摄像头域、src/screen/ 屏幕域）----
+# ---- 库（目录：src/ 门面与导出清单、src/common/ 跨域设施、src/camera/ 摄像头域、src/screen/ 屏幕域、src/audio/ 音频域）----
 set(SPARKCAP_SRC
     src/facade.cpp
     src/common/capture_common.cpp
@@ -45,6 +46,14 @@ if (SPARKCAP_ENABLE_SCREEN)
 else()
     # 桩：头文件/ABI/导出面不变（list 返回空计数，其余 UNSUPPORTED），见 screen_stub.cpp
     list(APPEND SPARKCAP_SRC src/screen/screen_stub.cpp)
+endif()
+if (SPARKCAP_ENABLE_AUDIO)
+    list(APPEND SPARKCAP_SRC
+        src/audio/audio_session.cpp     # 会话层：目标模型（麦克风/回采）/队列回调
+        src/audio/backend_wasapi.cpp)   # 单后端：端点枚举 + 事件驱动采集 + 静音帧合成
+else()
+    # 桩：头文件/ABI/导出面不变（list 返回空计数，其余 UNSUPPORTED），见 audio_stub.cpp
+    list(APPEND SPARKCAP_SRC src/audio/audio_stub.cpp)
 endif()
 
 add_library(sparkcap SHARED ${SPARKCAP_SRC})
@@ -84,11 +93,13 @@ endif()
 target_compile_features(sparkcap PRIVATE cxx_std_20)
 
 # 构建库本体时切换为导出端（命名规范 §6）
-# ENABLE_FFMPEG/ENABLE_SCREEN 宏供 facade 的 sparkcap_query_features 报告功能集（§10.4）
+# ENABLE_FFMPEG/ENABLE_SCREEN/ENABLE_AUDIO 宏供 facade 的 sparkcap_query_features
+# 报告功能集（§10.4）
 target_compile_definitions(sparkcap PRIVATE
     SPARKCAP_EXPORTS
     SPARKCAP_ENABLE_FFMPEG=$<BOOL:${SPARKCAP_ENABLE_FFMPEG}>
-    SPARKCAP_ENABLE_SCREEN=$<BOOL:${SPARKCAP_ENABLE_SCREEN}>)
+    SPARKCAP_ENABLE_SCREEN=$<BOOL:${SPARKCAP_ENABLE_SCREEN}>
+    SPARKCAP_ENABLE_AUDIO=$<BOOL:${SPARKCAP_ENABLE_AUDIO}>)
 
 # 静态 CRT（/MT，Debug /MTd）：无运行时 DLL 依赖（Spec §8）
 set_property(TARGET sparkcap PROPERTY

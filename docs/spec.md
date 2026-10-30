@@ -1,7 +1,7 @@
 # SparkCap 规格说明（Spec）
 
-- 版本：1.4（屏幕域扩展：窗口捕获 WGC + GDI 降级链 + fps 限速 + 窗口状态契约 + 光标/边框选项；`sparkcap_screen_start` 加 fps 参数；错误码 13）
-- 日期：2026-10-29
+- 版本：1.5（音频域扩展：麦克风 + 扬声器回采 WASAPI 单链、格式双模式（mix format 原样 / 显式指定系统侧转换）、loopback 静音帧契约、独立音频帧结构；导出 27 → 39）
+- 日期：2026-10-30
 - 状态：待评审
 - 关联文档：design.md
 
@@ -15,10 +15,12 @@
 
 | 术语 | 含义 |
 |---|---|
-| 设备 | 系统视频采集设备或 IP Camera |
-| 后端 | MF / DShow / FFmpeg |
+| 设备 | 系统视频采集设备、IP Camera 或音频端点（麦克风/扬声器输出） |
+| 后端 | MF / DShow / FFmpeg / WASAPI |
 | 帧 | 一次采集输出，携带格式与步长 |
 | 原始格式 | 设备原始输出格式，库端不做转换（含压缩格式 MJPG 与未压缩格式 YUY2/NV12 等） |
+| 端点（endpoint） | WASAPI 音频设备抽象：USB/板载/蓝牙/HDMI 声卡统一呈现，endpoint ID 字符串为稳定标识 |
+| mix format | WASAPI 共享模式的系统混音格式（典型 float32/48kHz/2ch），音频会话的默认交付格式 |
 
 ## 3. 功能规格
 
@@ -45,6 +47,11 @@
 | F19 | 窗口状态 | 最小化：错误回调 `SOURCE_PAUSED` 一次 + get_frame 返回 TIMEOUT（不补假帧），还原自动恢复；关闭：`STREAM_LOST`；resize：帧尺寸跟随 | 三态行为与通知契约一致 |
 | F20 | GDI 降级链 | 显示器 BitBlt / 窗口 PrintWindow（PW_RENDERFULLCONTENT），start 时主后端失败自动回落，应用无感 | 降级路径出帧正常（边角限制见技术选型 §10.5） |
 | F21 | 屏幕域选项 | set_options：光标/边框 best-effort 可配置（默认无光标 + 尽力无边框；不支持静默降级，矩阵见 §4.7） | 未知位返回 OK；start 后设置 UNSUPPORTED；WGC 路径按选项生效 |
+| F22 | 麦克风枚举 | eCapture 端点两段式（`sparkcap_audio_device_info_t`：id/name/is_default + mix format 预览三项）。id 为 WASAPI endpoint ID 字符串（稳定标识，蓝牙插拔后仍有效）；name 为端点友好名（如 "麦克风 (USB Audio Device)"） | USB/板载/蓝牙麦克风均枚举到；条目字段完整 |
+| F23 | 回采枚举 | eRender 端点两段式（字段同 F22；is_default = 默认播放设备） | 扬声器/HDMI/蓝牙输出均枚举到 |
+| F24 | 打开音频会话 | `open`（麦克风）/`open_loopback`（回采）分叉入口（同构屏幕域 open/open_window）。format 参数双模式：**NULL = mix format 原样交付**（零转换）；指定 {sample_format, sample_rate, channels} = 系统侧 AUTOCONVERTPCM 转换。**上报恒为实际交付格式**（truthful，显式指定不属"隐式转换"）。独占模式占用返回 DEVICE_BUSY；声道折混**已实测可用**（2026-10-30，Win11 26100：stereo mix format 设备指定 1ch，Initialize 成功且按 1ch 交付——AUTOCONVERTPCM 内含声道矩阵，与 MS Learn 现行文档"a channel matrixer and a sample-rate converter"一致；值域 1–8ch 放行，>2ch 未逐档实测） | NULL 路径上报 mix format 三元组；指定 16000/2ch 上报 16000/2ch；被独占占用时 DEVICE_BUSY |
+| F25 | 音频取帧 | 共享模式事件驱动，帧 = 设备 packet；timestamp 100ns 与视频域同源（A/V 时钟对齐）。**loopback 静默期合成静音帧**（无声 ≠ 无帧：内容是静音，时间戳连续，录制/推流流不断）；麦克风路径无合成需求（设备持续出 packet 含噪声底） | 静默期持续交付静音帧且 timestamp 单调连续；麦克风帧时间戳与视频帧同源可对齐 |
+| F26 | 音频帧生命周期 | 独立帧结构 `sparkcap_audio_frame_t`（data/size/timestamp + samples_per_channel/sample_rate/channels/sample_format，interleaved 布局）+ 域级 copy/release 工具；生命周期语义同 §4.3（回调期间有效 / 下次 get_frame 前有效 / copy 跨调用持有） | 与视频帧语义同构 |
 
 ## 4. 接口契约
 
@@ -77,6 +84,18 @@
 | sparkcap_screen_get_frame | 拉取一帧（静止期事件驱动后端 TIMEOUT / 轮询后端重复帧——应用不假设帧唯一性） |
 | sparkcap_screen_stop | 停止捕获 |
 | sparkcap_screen_close | 关闭会话 |
+| sparkcap_audio_list_microphones | 枚举麦克风端点（两段式，`sparkcap_audio_device_info_t`） |
+| sparkcap_audio_list_loopbacks | 枚举回采端点（eRender 输出，两段式，字段同上） |
+| sparkcap_audio_open | 打开麦克风会话（format 可空：NULL = mix format 原样；指定 = 系统侧转换；上报实际格式） |
+| sparkcap_audio_open_loopback | 打开扬声器回采会话（AUDCLNT_STREAMFLAGS_LOOPBACK；format 语义同 open） |
+| sparkcap_audio_set_frame_callback | 注册音频帧回调（start 前；`sparkcap_audio_frame_cb` / `sparkcap_audio_frame_t`） |
+| sparkcap_audio_set_error_callback | 注册错误回调（端点拔出 STREAM_LOST；start 前） |
+| sparkcap_audio_start | 启动采集（fps 参数仅 0 合法——采样率即节流，参数为三域 start 签名同构保留） |
+| sparkcap_audio_get_frame | 拉取一帧（loopback 静默期交付静音帧，不超时） |
+| sparkcap_audio_stop | 停止采集 |
+| sparkcap_audio_close | 关闭会话 |
+| sparkcap_audio_copy_frame | 深拷贝音频帧（跨线程/跨调用持有） |
+| sparkcap_audio_release_frame | 释放音频帧 |
 | sparkcap_copy_frame | 深拷贝一帧 |
 | sparkcap_release_frame | 释放帧 |
 
@@ -151,7 +170,7 @@
 1. set_frame_callback / set_error_callback 须在 start 前注册，start 后注册返回 SPARKCAP_ERR_UNSUPPORTED；set_log_callback 任意时机可注册；
 2. 错误回调仅通知流断开（STREAM_LOST），不通知恢复——恢复由帧回调恢复交付隐式推断。
 2. start/stop 可在同一设备上多次交替；stop 后 get_frame 返回 SPARKCAP_ERR_STREAM_LOST；
-3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；
+3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；已 close 句柄的内存延迟至 destroy_backend 释放（close 置墓碑标记而非立即 delete），使本条确定成立、不依赖堆残留值；
 4. 合法序列之外的调用返回相应错误码，不产生未定义行为、不崩溃。
 
 ### 4.7 屏幕域选项行为矩阵（best-effort）

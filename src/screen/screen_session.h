@@ -139,7 +139,6 @@ private:
     void captureThread();
     bool popFrameLocked(sparkcap_frame_t* outFrame);
     void invokeCallbackLocked();
-    static int64_t now100ns();  // QPC → 100ns（与 camera 域时间戳同源同单位）
     static void backendErrorTrampoline(void* ctx, sparkcap_err_t code);
     static bool backendShouldStopTrampoline(void* ctx);
 
