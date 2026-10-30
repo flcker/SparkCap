@@ -26,4 +26,9 @@ private:
     bool m_old;
 };
 
+// 统一时钟域：QPC → 100ns 单位（camera/screen/audio 三域时间戳同源同单位：
+// MF 原生 100ns / DShow 秒×1e7 / FFmpeg rescale 至 1/10^7 s /
+// WASAPI QPCPosition 本身即 QPC 的 100ns 表示——A/V 对齐的前提，Spec F25）。
+int64_t now100ns();
+
 } // namespace sparkcap

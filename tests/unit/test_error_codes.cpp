@@ -35,6 +35,14 @@ static void case_pixfmt_values()
     CHECK_EQ(SPARKCAP_PIXFMT_RGB24, 6);
 }
 
+static void case_sample_format_values()
+{
+    // 音频采样格式枚举值 ABI 锁（F24/F26 上报值）
+    CHECK_EQ(SPARKCAP_SAMPLE_UNKNOWN, 0);
+    CHECK_EQ(SPARKCAP_SAMPLE_F32, 1);
+    CHECK_EQ(SPARKCAP_SAMPLE_S16, 2);
+}
+
 static void case_version_and_null_guards()
 {
     CHECK_STR_EQ(sparkcap_version(), "1.0.0");
@@ -44,6 +52,31 @@ static void case_version_and_null_guards()
     CHECK_EQ(sparkcap_camera_list_devices(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
     CHECK_EQ(sparkcap_destroy_backend(nullptr), SPARKCAP_ERR_INVALID_ARG);
     CHECK_EQ(sparkcap_camera_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
+
+    // 音频域 null 参数守卫（不触设备，无硬件依赖）
+    sparkcap_device_t* d = nullptr;
+    sparkcap_audio_frame_t* af = nullptr;
+    CHECK_EQ(sparkcap_audio_list_microphones(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_list_loopbacks(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_open(nullptr, "id", nullptr, &d), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_open_loopback(nullptr, "id", nullptr, &d), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_stop(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_close(nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_get_frame(nullptr, &af, 100), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_set_frame_callback(nullptr, nullptr, nullptr),
+             SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_set_error_callback(nullptr, nullptr, nullptr),
+             SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_copy_frame(nullptr, &af), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_release_frame(nullptr), SPARKCAP_ERR_INVALID_ARG);
+
+    CHECK_EQ(sparkcap_create_backend(&b), SPARKCAP_ERR_OK);
+    if (b == nullptr)
+        return;
+    CHECK_EQ(sparkcap_audio_list_microphones(b, nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_open(b, nullptr, nullptr, &d), SPARKCAP_ERR_INVALID_ARG);
+    CHECK_EQ(sparkcap_audio_open(b, "id", nullptr, nullptr), SPARKCAP_ERR_INVALID_ARG);
+    sparkcap_destroy_backend(b);
 }
 
 // 功能集位值 ABI 锁 + 运行时行为（编译期裁剪的可探测性，Spec §4.1）
@@ -53,6 +86,7 @@ static void case_feature_query()
     CHECK_EQ(SPARKCAP_FEATURE_CAMERA, 1);
     CHECK_EQ(SPARKCAP_FEATURE_IP_CAMERA, 2);
     CHECK_EQ(SPARKCAP_FEATURE_SCREEN, 4);
+    CHECK_EQ(SPARKCAP_FEATURE_AUDIO, 8);
 
     const uint32_t f = sparkcap_query_features();
     CHECK((f & SPARKCAP_FEATURE_CAMERA) != 0);  // 本地摄像头恒可用
@@ -66,8 +100,13 @@ static void case_feature_query()
 #else
     CHECK((f & SPARKCAP_FEATURE_SCREEN) == 0);
 #endif
+#if SPARKCAP_ENABLE_AUDIO
+    CHECK((f & SPARKCAP_FEATURE_AUDIO) != 0);
+#else
+    CHECK((f & SPARKCAP_FEATURE_AUDIO) == 0);
+#endif
     CHECK((f & ~(SPARKCAP_FEATURE_CAMERA | SPARKCAP_FEATURE_IP_CAMERA |
-                 SPARKCAP_FEATURE_SCREEN)) == 0);  // 无未定义位
+                 SPARKCAP_FEATURE_SCREEN | SPARKCAP_FEATURE_AUDIO)) == 0);  // 无未定义位
 }
 
 int main()
@@ -75,6 +114,7 @@ int main()
     g_suiteName = "unit_error_codes";
     RUN_CASE(case_error_code_values);
     RUN_CASE(case_pixfmt_values);
+    RUN_CASE(case_sample_format_values);
     RUN_CASE(case_version_and_null_guards);
     RUN_CASE(case_feature_query);
     TEST_MAIN_END();

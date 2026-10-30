@@ -262,7 +262,7 @@ Windows 音频 API 全景（采集能力）：
 - **NULL（默认）= mix format 原样**：共享模式系统混音格式（典型 float32/48kHz/2ch）零转换交付——严格延续 F9 保真
 - **指定 `{sample_format, sample_rate, channels}`** = `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY`（Win7+）：转换由系统音频引擎完成，**库不写任何重采样/格式转换代码**
 - **上报恒为实际交付格式**：转换是使用方显式要求，且上报与交付一致——F9"不隐式转换"的规则精神是"库不擅自决定"，显式指定 + truthful 上报不违反（摄像头域的格式协商同构：指定了 YUY2 上报 YUY2）
-- 声道约束（**待实现期实测验证**）：AUTOCONVERTPCM 文档仅承诺采样格式与采样率转换，声道行为未明确——设计暂定"指定声道数须等于 mix format 声道数（典型 2）"，实现期实测系统实际行为后修正文档；声道折混需求后置
+- 声道约束（**已实测**，2026-10-30，Win11 26100）：AUTOCONVERTPCM 内含声道矩阵——stereo mix format 设备指定 1ch，`Initialize` 成功且按请求的 1ch 交付（与 MS Learn 现行文档"a channel matrixer and a sample-rate converter"一致）。设计期"须匹配 mix format 声道数"的暂定约束解除；值域仍限 1–8ch（facade 校验），>2ch 档位未逐档实测
 - mix format 预览进枚举条目（F22/F23）：UI 直接展示"48kHz 2ch"，使用方据此决定是否需要指定格式
 
 **静音帧契约（F25，与屏幕域 F14 的哲学分歧）**：

@@ -5,6 +5,8 @@
 
 #include "sparkcap.h"
 
+#include "audio/audio_session.h"
+#include "audio/backend_wasapi.h"
 #include "camera/device_manager.h"
 #include "screen/screen_session.h"
 
@@ -16,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -26,10 +29,14 @@ struct sparkcap_backend {
     bool mfStarted = false;
     std::unique_ptr<sparkcap::SparkCapDeviceManager> manager;
 
-    // 已打开设备注册表：兑现 Spec §4.5-3/4（close 后句柄调用返回
-    // INVALID_HANDLE 而非未定义行为）
+    // 设备注册表：兑现 Spec §4.5-3/4（close 后句柄调用返回 INVALID_HANDLE
+    // 而非未定义行为）。close 不 delete 句柄内存，改为置 owner=nullptr 墓碑
+    // 并移入 closedDevices，延迟至 destroy_backend 释放——立即 delete 后堆
+    // 自由块被填充 0xFEEEFEEE，validDevice 的 owner 自比对通过、锁到垃圾
+    // 互斥体即崩溃；墓碑使 close 后调用确定性返回 INVALID_HANDLE。
     std::mutex deviceMutex;
     std::unordered_set<sparkcap_device_t*> devices;
+    std::vector<sparkcap_device_t*> closedDevices;
 };
 
 // ---- 设备会话实体 ----
@@ -39,7 +46,9 @@ struct sparkcap_device {
     std::unique_ptr<sparkcap::ICaptureSession> session;      // 摄像头域
     std::unique_ptr<sparkcap::SparkCapScreenSession> screen; // 屏幕域
     int screenDisplayId = -1;  // 屏幕域打开的 displayId（同屏占用判定，F13）
-    sparkcap_frame_t frame = {};  // get_frame 的出参指向这里
+    std::unique_ptr<sparkcap::SparkCapAudioSession> audio;   // 音频域
+    sparkcap_frame_t frame = {};       // get_frame 的出参指向这里
+    sparkcap_audio_frame_t audioFrame = {};  // 音频 get_frame 的出参指向这里
 };
 
 namespace {
@@ -60,6 +69,28 @@ struct FrameAllocation {
     uint32_t magic;
     sparkcap_frame_t frame;  // data 指向本结构之后的缓冲
 };
+
+// 音频帧拷贝的堆分配布局（同构视频帧：magic 区分帧族，跨族 release 拒绝）。
+struct AudioFrameAllocation {
+    static constexpr uint32_t kMagic = 0x53504146u;  // "SPAF"
+    uint32_t magic;
+    sparkcap_audio_frame_t frame;  // data 指向本结构之后的缓冲
+};
+
+// 音频请求格式校验（F24：NULL = mix format 原样；指定三元组限定值域）
+bool validAudioFormat(const sparkcap_audio_format_t* f)
+{
+    if (f == nullptr)
+        return true;
+    if (f->sample_format != SPARKCAP_SAMPLE_F32 &&
+        f->sample_format != SPARKCAP_SAMPLE_S16)
+        return false;
+    if (f->sample_rate < 8000 || f->sample_rate > 384000)
+        return false;
+    if (f->channels < 1 || f->channels > 8)
+        return false;
+    return true;
+}
 
 } // namespace
 
@@ -118,10 +149,20 @@ int sparkcap_destroy_backend(sparkcap_backend_t* backend)
 {
     if (backend == nullptr)
         return SPARKCAP_ERR_INVALID_ARG;
+    {   // 先析构设备（未关 + 墓碑）：会话 stop/资源释放须在 MFShutdown 之前。
+        // 会话锁与 deviceMutex 无嵌套，持锁删除无死锁。
+        std::lock_guard<std::mutex> lk(backend->deviceMutex);
+        for (sparkcap_device_t* d : backend->devices)
+            delete d;
+        for (sparkcap_device_t* d : backend->closedDevices)
+            delete d;
+        backend->devices.clear();
+        backend->closedDevices.clear();
+    }
     if (backend->mfStarted)
         MFShutdown();
     const bool comOwned = backend->comOwned;
-    delete backend;  // unique_ptr 在此析构 DeviceManager 与未关设备
+    delete backend;  // unique_ptr 在此析构 DeviceManager
     if (comOwned)
         CoUninitialize();
     return SPARKCAP_ERR_OK;
@@ -306,8 +347,10 @@ int sparkcap_camera_close(sparkcap_device_t* device)
     {
         std::lock_guard<std::mutex> lk(backend->deviceMutex);
         backend->devices.erase(device);
+        backend->closedDevices.push_back(device);  // 墓碑延迟释放（见结构体注释）
     }
-    delete device;  // ~MfSession：stop → 释放 reader/source/回调
+    device->owner = nullptr;  // 先置墓碑：并发调用立即 INVALID_HANDLE
+    device->session.reset();  // ~MfSession：stop → 释放 reader/source/回调
     return SPARKCAP_ERR_OK;
 }
 
@@ -570,8 +613,279 @@ int sparkcap_screen_close(sparkcap_device_t* device)
     {
         std::lock_guard<std::mutex> lk(backend->deviceMutex);
         backend->devices.erase(device);
+        backend->closedDevices.push_back(device);  // 墓碑延迟释放（见结构体注释）
     }
-    delete device;  // ~SparkCapScreenSession：stop → 释放采集链
+    device->owner = nullptr;  // 先置墓碑：并发调用立即 INVALID_HANDLE
+    device->screen.reset();   // ~SparkCapScreenSession：stop → 释放采集链
+    return SPARKCAP_ERR_OK;
+}
+
+// ---- 音频域（F22–F26，麦克风采集 + 扬声器回采，WASAPI 单链）----
+
+int sparkcap_audio_list_microphones(sparkcap_backend_t* backend,
+                                    sparkcap_audio_device_info_t* infos,
+                                    int* inOutCount)
+{
+    if (backend == nullptr || inOutCount == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    try {
+        std::vector<sparkcap_audio_device_info_t> list;
+        const int rc = sparkcap::audioListEndpoints(sparkcap::AudioTarget::Kind::Microphone,
+                                                    list);
+        if (rc != SPARKCAP_ERR_OK) {
+            *inOutCount = 0;
+            return rc;
+        }
+        const int total = static_cast<int>(list.size());
+        if (infos == nullptr) {
+            *inOutCount = total;
+            return SPARKCAP_ERR_OK;
+        }
+        const int fit = (*inOutCount < total) ? *inOutCount : total;
+        for (int i = 0; i < fit; ++i)
+            infos[i] = list[i];
+        *inOutCount = total;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_list_loopbacks(sparkcap_backend_t* backend,
+                                  sparkcap_audio_device_info_t* infos,
+                                  int* inOutCount)
+{
+    if (backend == nullptr || inOutCount == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    try {
+        std::vector<sparkcap_audio_device_info_t> list;
+        const int rc = sparkcap::audioListEndpoints(sparkcap::AudioTarget::Kind::Loopback,
+                                                    list);
+        if (rc != SPARKCAP_ERR_OK) {
+            *inOutCount = 0;
+            return rc;
+        }
+        const int total = static_cast<int>(list.size());
+        if (infos == nullptr) {
+            *inOutCount = total;
+            return SPARKCAP_ERR_OK;
+        }
+        const int fit = (*inOutCount < total) ? *inOutCount : total;
+        for (int i = 0; i < fit; ++i)
+            infos[i] = list[i];
+        *inOutCount = total;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+// 麦克风/回采 open 共用实现（kind 分叉，同构屏幕域 open/open_window）
+static int audioOpenCommon(sparkcap_backend_t* backend, const char* endpointId,
+                           const sparkcap_audio_format_t* format,
+                           sparkcap::AudioTarget::Kind kind,
+                           sparkcap_device_t** outDevice)
+{
+    if (outDevice == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *outDevice = nullptr;
+    if (backend == nullptr || endpointId == nullptr || endpointId[0] == '\0')
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (!validAudioFormat(format))
+        return SPARKCAP_ERR_INVALID_ARG;
+
+    try {
+        auto* device = new (std::nothrow) sparkcap_device();
+        if (device == nullptr)
+            return SPARKCAP_ERR_NO_MEMORY;
+
+        sparkcap::AudioTarget target;
+        target.kind = kind;
+        target.endpointId = endpointId;
+        std::optional<sparkcap_audio_format_t> requested;
+        if (format != nullptr)
+            requested = *format;
+        std::unique_ptr<sparkcap::SparkCapAudioSession> session;
+        const int rc = sparkcap::audioOpenSession(target, requested, &session);
+        if (rc != SPARKCAP_ERR_OK || session == nullptr) {
+            delete device;
+            return rc;
+        }
+        device->owner = backend;
+        device->audio = std::move(session);
+
+        {
+            std::lock_guard<std::mutex> lk(backend->deviceMutex);
+            backend->devices.insert(device);
+        }
+        *outDevice = device;
+        return SPARKCAP_ERR_OK;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_open(sparkcap_backend_t* backend, const char* endpointId,
+                        const sparkcap_audio_format_t* format,
+                        sparkcap_device_t** outDevice)
+{
+    return audioOpenCommon(backend, endpointId, format,
+                           sparkcap::AudioTarget::Kind::Microphone, outDevice);
+}
+
+int sparkcap_audio_open_loopback(sparkcap_backend_t* backend, const char* endpointId,
+                                 const sparkcap_audio_format_t* format,
+                                 sparkcap_device_t** outDevice)
+{
+    return audioOpenCommon(backend, endpointId, format,
+                           sparkcap::AudioTarget::Kind::Loopback, outDevice);
+}
+
+int sparkcap_audio_set_frame_callback(sparkcap_device_t* device,
+                                      sparkcap_audio_frame_cb cb, void* userdata)
+{
+    if (device == nullptr || cb == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;
+    if (!validDevice(device->owner, device) || device->audio == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;  // 含跨域句柄（摄像头/屏幕域设备）
+    try {
+        return device->audio->setCallback(device, cb, userdata);
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_set_error_callback(sparkcap_device_t* device,
+                                      sparkcap_error_cb cb, void* userdata)
+{
+    if (device == nullptr || cb == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;
+    if (!validDevice(device->owner, device) || device->audio == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->audio->setErrorCallback(device, cb, userdata);
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_start(sparkcap_device_t* device, int fps)
+{
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (fps != 0)
+        return SPARKCAP_ERR_INVALID_ARG;  // 仅 0 合法：采样率即节流（F25）
+    if (!validDevice(device->owner, device) || device->audio == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->audio->start(fps);
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_get_frame(sparkcap_device_t* device,
+                             sparkcap_audio_frame_t** outFrame, int timeoutMs)
+{
+    if (outFrame == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *outFrame = nullptr;
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (!validDevice(device->owner, device) || device->audio == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        device->audioFrame = {};
+        const int rc = device->audio->getFrame(&device->audioFrame, timeoutMs);
+        if (rc == SPARKCAP_ERR_OK)
+            *outFrame = &device->audioFrame;  // 有效期至下次 get_frame/stop/close
+        return rc;
+    } catch (const std::bad_alloc&) {
+        return SPARKCAP_ERR_NO_MEMORY;
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_stop(sparkcap_device_t* device)
+{
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
+    if (!validDevice(device->owner, device) || device->audio == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;
+    try {
+        return device->audio->stop();
+    } catch (...) {
+        return SPARKCAP_ERR_INTERNAL;
+    }
+}
+
+int sparkcap_audio_close(sparkcap_device_t* device)
+{
+    if (device == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    if (sparkcap::g_inFrameCallback)
+        return SPARKCAP_ERR_IN_CALLBACK;  // 回调内禁止（Spec §4.4-5）
+    sparkcap_backend_t* backend = device->owner;
+    if (backend == nullptr || !validDevice(backend, device) || device->audio == nullptr)
+        return SPARKCAP_ERR_INVALID_HANDLE;  // 含跨域句柄（走对应域 close）
+    {
+        std::lock_guard<std::mutex> lk(backend->deviceMutex);
+        backend->devices.erase(device);
+        backend->closedDevices.push_back(device);  // 墓碑延迟释放（见结构体注释）
+    }
+    device->owner = nullptr;  // 先置墓碑：并发调用立即 INVALID_HANDLE
+    device->audio.reset();    // ~SparkCapAudioSession：stop → 释放采集链
+    return SPARKCAP_ERR_OK;
+}
+
+int sparkcap_audio_copy_frame(const sparkcap_audio_frame_t* src,
+                              sparkcap_audio_frame_t** outCopy)
+{
+    if (outCopy == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    *outCopy = nullptr;
+    if (src == nullptr || src->data == nullptr || src->size <= 0)
+        return SPARKCAP_ERR_INVALID_ARG;
+
+    const size_t header = (sizeof(AudioFrameAllocation) + 15) & ~size_t(15);
+    const size_t total = header + static_cast<size_t>(src->size);
+    auto* alloc = static_cast<AudioFrameAllocation*>(operator new(total, std::nothrow));
+    if (alloc == nullptr)
+        return SPARKCAP_ERR_NO_MEMORY;
+
+    alloc->magic = AudioFrameAllocation::kMagic;
+    alloc->frame = *src;
+    alloc->frame.data = static_cast<char*>(static_cast<void*>(alloc)) + header;
+    memcpy(alloc->frame.data, src->data, static_cast<size_t>(src->size));
+    *outCopy = &alloc->frame;
+    return SPARKCAP_ERR_OK;
+}
+
+int sparkcap_audio_release_frame(sparkcap_audio_frame_t* frame)
+{
+    if (frame == nullptr)
+        return SPARKCAP_ERR_INVALID_ARG;
+    auto* alloc = reinterpret_cast<AudioFrameAllocation*>(
+        static_cast<char*>(static_cast<void*>(frame)) - offsetof(AudioFrameAllocation, frame));
+    if (alloc->magic != AudioFrameAllocation::kMagic)
+        return SPARKCAP_ERR_INVALID_ARG;  // 非 audio_copy_frame 产物（含视频帧/会话内部帧）
+    alloc->magic = 0;
+    operator delete(alloc);
     return SPARKCAP_ERR_OK;
 }
 
@@ -627,6 +941,9 @@ uint32_t sparkcap_query_features(void)
 #endif
 #if SPARKCAP_ENABLE_SCREEN
     features |= SPARKCAP_FEATURE_SCREEN;
+#endif
+#if SPARKCAP_ENABLE_AUDIO
+    features |= SPARKCAP_FEATURE_AUDIO;
 #endif
     return features;
 }

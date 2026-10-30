@@ -49,7 +49,7 @@
 | F21 | 屏幕域选项 | set_options：光标/边框 best-effort 可配置（默认无光标 + 尽力无边框；不支持静默降级，矩阵见 §4.7） | 未知位返回 OK；start 后设置 UNSUPPORTED；WGC 路径按选项生效 |
 | F22 | 麦克风枚举 | eCapture 端点两段式（`sparkcap_audio_device_info_t`：id/name/is_default + mix format 预览三项）。id 为 WASAPI endpoint ID 字符串（稳定标识，蓝牙插拔后仍有效）；name 为端点友好名（如 "麦克风 (USB Audio Device)"） | USB/板载/蓝牙麦克风均枚举到；条目字段完整 |
 | F23 | 回采枚举 | eRender 端点两段式（字段同 F22；is_default = 默认播放设备） | 扬声器/HDMI/蓝牙输出均枚举到 |
-| F24 | 打开音频会话 | `open`（麦克风）/`open_loopback`（回采）分叉入口（同构屏幕域 open/open_window）。format 参数双模式：**NULL = mix format 原样交付**（零转换）；指定 {sample_format, sample_rate, channels} = 系统侧 AUTOCONVERTPCM 转换。**上报恒为实际交付格式**（truthful，显式指定不属"隐式转换"）。独占模式占用返回 DEVICE_BUSY；声道转换行为以实现期实测为准（AUTOCONVERTPCM 文档仅承诺格式/采样率转换，声道是否折混未明确——约束暂定"须匹配 mix format 声道数"，实测后修正） | NULL 路径上报 mix format 三元组；指定 16000/2ch 上报 16000/2ch；被独占占用时 DEVICE_BUSY |
+| F24 | 打开音频会话 | `open`（麦克风）/`open_loopback`（回采）分叉入口（同构屏幕域 open/open_window）。format 参数双模式：**NULL = mix format 原样交付**（零转换）；指定 {sample_format, sample_rate, channels} = 系统侧 AUTOCONVERTPCM 转换。**上报恒为实际交付格式**（truthful，显式指定不属"隐式转换"）。独占模式占用返回 DEVICE_BUSY；声道折混**已实测可用**（2026-10-30，Win11 26100：stereo mix format 设备指定 1ch，Initialize 成功且按 1ch 交付——AUTOCONVERTPCM 内含声道矩阵，与 MS Learn 现行文档"a channel matrixer and a sample-rate converter"一致；值域 1–8ch 放行，>2ch 未逐档实测） | NULL 路径上报 mix format 三元组；指定 16000/2ch 上报 16000/2ch；被独占占用时 DEVICE_BUSY |
 | F25 | 音频取帧 | 共享模式事件驱动，帧 = 设备 packet；timestamp 100ns 与视频域同源（A/V 时钟对齐）。**loopback 静默期合成静音帧**（无声 ≠ 无帧：内容是静音，时间戳连续，录制/推流流不断）；麦克风路径无合成需求（设备持续出 packet 含噪声底） | 静默期持续交付静音帧且 timestamp 单调连续；麦克风帧时间戳与视频帧同源可对齐 |
 | F26 | 音频帧生命周期 | 独立帧结构 `sparkcap_audio_frame_t`（data/size/timestamp + samples_per_channel/sample_rate/channels/sample_format，interleaved 布局）+ 域级 copy/release 工具；生命周期语义同 §4.3（回调期间有效 / 下次 get_frame 前有效 / copy 跨调用持有） | 与视频帧语义同构 |
 
@@ -170,7 +170,7 @@
 1. set_frame_callback / set_error_callback 须在 start 前注册，start 后注册返回 SPARKCAP_ERR_UNSUPPORTED；set_log_callback 任意时机可注册；
 2. 错误回调仅通知流断开（STREAM_LOST），不通知恢复——恢复由帧回调恢复交付隐式推断。
 2. start/stop 可在同一设备上多次交替；stop 后 get_frame 返回 SPARKCAP_ERR_STREAM_LOST；
-3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；
+3. 未 open 或已 close 的句柄上的一切调用返回 SPARKCAP_ERR_INVALID_HANDLE；已 close 句柄的内存延迟至 destroy_backend 释放（close 置墓碑标记而非立即 delete），使本条确定成立、不依赖堆残留值；
 4. 合法序列之外的调用返回相应错误码，不产生未定义行为、不崩溃。
 
 ### 4.7 屏幕域选项行为矩阵（best-effort）
