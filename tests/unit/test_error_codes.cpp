@@ -48,7 +48,16 @@ static void case_sample_format_values()
 
 static void case_version_and_null_guards()
 {
-    CHECK_STR_EQ(sparkcap_version(), "1.0.0");
+    // 版本字符串 = 三元组 + semver build metadata（CMake 注入 "sha.yyyymmdd"）：
+    // 断言前缀由公开头版本宏拼出，版本升级自动适配；sscanf("%d.%d.%d") 式
+    // 前缀解析不受 "+" 后缀影响（接入方兼容性契约）。
+    char expect[16];
+    std::snprintf(expect, sizeof(expect), "%d.%d.%d+",
+                  SPARKCAP_VERSION_MAJOR, SPARKCAP_VERSION_MINOR,
+                  SPARKCAP_VERSION_PATCH);
+    const char* v = sparkcap_version();
+    CHECK(std::strncmp(v, expect, std::strlen(expect)) == 0);
+    CHECK(std::strlen(v) > std::strlen(expect));  // metadata 非空
 
     sparkcap_backend_t* b = nullptr;
     CHECK_EQ(sparkcap_create_backend(nullptr), SPARKCAP_ERR_INVALID_ARG);

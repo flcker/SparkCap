@@ -59,7 +59,7 @@
 
 | 函数 | 说明 |
 |---|---|
-| sparkcap_version | 返回库版本字符串 |
+| sparkcap_version | 返回库版本字符串：`"MAJOR.MINOR.PATCH+<git-sha8>.<yyyymmdd>"`（三元组与 `sparkcap_types.h` 版本宏同源单维护；`+` 后为 semver build metadata——CMake configure 时刻注入的 HEAD sha 与构建日期，DLL 与源码 commit 运行时对账用。前缀解析兼容：`sscanf("%d.%d.%d")` 不受影响） |
 | sparkcap_query_features | 返回功能集位掩码（`sparkcap_feature_t`，编译期裁剪的运行时可探测入口；能力域命名与 CMake option 故意不同名：`ENABLE_FFMPEG` ↔ `FEATURE_IP_CAMERA`） |
 | sparkcap_create_backend | 创建后端实例 |
 | sparkcap_destroy_backend | 销毁实例 |

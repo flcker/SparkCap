@@ -929,9 +929,18 @@ int sparkcap_release_frame(sparkcap_frame_t* frame)
     return SPARKCAP_ERR_OK;
 }
 
+// 版本字符串：三元组宏拼接（单源——版本号只在 sparkcap_types.h 维护，杜绝
+// 宏与字符串双处不同步）。两层宏是标准手法：# 运算符的参数不展开，须经
+// 外层先展开再 stringify（STR(MAJOR) → STR2(1) → "1"）。
+// SPARKCAP_BUILD_META 由 CMake 注入（HEAD sha.构建日期，见 CMakeLists.txt），
+// 拼在 semver + 位：接入方 sscanf("%d.%d.%d") 式解析不受影响。
+#define SPARKCAP_STR2(x) #x
+#define SPARKCAP_STR(x) SPARKCAP_STR2(x)
+
 const char* sparkcap_version(void)
 {
-    return "1.0.0";
+    return SPARKCAP_STR(SPARKCAP_VERSION_MAJOR) "." SPARKCAP_STR(SPARKCAP_VERSION_MINOR)
+        "." SPARKCAP_STR(SPARKCAP_VERSION_PATCH) "+" SPARKCAP_BUILD_META;
 }
 
 // 功能集查询（Spec §4.1）：本函数是"库实现零 #if"原则的唯一豁免——

@@ -101,6 +101,25 @@ target_compile_definitions(sparkcap PRIVATE
     SPARKCAP_ENABLE_SCREEN=$<BOOL:${SPARKCAP_ENABLE_SCREEN}>
     SPARKCAP_ENABLE_AUDIO=$<BOOL:${SPARKCAP_ENABLE_AUDIO}>)
 
+# 版本 build metadata（semver + 位）：configure 时刻的 HEAD sha + 日期，
+# sparkcap_version() 拼为 "MAJOR.MINOR.PATCH+<sha8>.<yyyymmdd>"——DLL 与
+# 源码 commit 对账的运行时标识。无 .git 环境（源码包/CI 归档）容错 unknown。
+# 语义边界：sha 是 configure 时刻快照，commit 后需 reconfigure 才刷新。
+find_package(Git QUIET)
+if (Git_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    OUTPUT_VARIABLE SPARKCAP_GIT_SHA
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+endif()
+if (NOT SPARKCAP_GIT_SHA)
+    set(SPARKCAP_GIT_SHA "unknown")
+endif()
+string(TIMESTAMP SPARKCAP_BUILD_DATE "%Y%m%d")
+target_compile_definitions(sparkcap PRIVATE
+    SPARKCAP_BUILD_META="${SPARKCAP_GIT_SHA}.${SPARKCAP_BUILD_DATE}")
+
 # 静态 CRT（/MT，Debug /MTd）：无运行时 DLL 依赖（Spec §8）
 set_property(TARGET sparkcap PROPERTY
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
