@@ -7,6 +7,7 @@
 ### Changed
 
 - **全源文件补版权头**（开源合规扫描整改）：56 个 .c/.cpp/.h（include/src/examples/tests）统一头部两行 `Copyright (c) 2026 flcker <molanyousi@gmail.com>` + `SPDX-License-Identifier: LGPL-3.0-or-later`——SPDX 标识符供 scancode/FOSSA 等工具机器可读；`or-later` 与内嵌 FFmpeg（LGPL-2.1-or-later）授权链一致。LGPLv3 本身不强制逐文件声明，此为开源最佳实践补齐。顺带将涉及文件工作区行尾统一为 CRLF（对齐 .gitattributes text 声明，消除混合行尾的 git 警告刷屏）。构建零警告、ctest -L unit 6/6 不变
+- **README/AGENTS 状态同步至三域交付**：README 首段/特性/状态/构建/API 概览从"16 符号摄像头域"刷新为三域全景（39 符号、16 项测试、按域裁剪 option、screen/audio API 族、文档表补全 8 篇）；AGENTS 首段定位、技术栈后端清单、目录结构（补 src/audio/）、当前状态段同步（音频域已合并、A6 首跑数据入账）
 
 - **A5/N1 延迟实测：未达标挂账**（Spec §9-6，留后开发）：拍屏法（工具修复后）实测 J.ZAO W4AS 640×480 NV12@30 全链路 median 105–113ms（≈3.3 帧），未达 N1"≤2 帧"标准。全链路含屏幕 VSync（估 17–33ms）、设备曝光/读出（估 30–50ms）、USB 传输（估 10–15ms）等库外环节，库内占比未直接测量——后续补库内交付延迟测量（帧时间戳→回调触发/get_frame 返回）后再决策口径（修订 N1 边界为库内交付，或维持全链路并按设备分级）。实验排除库内可优化项：`MF_LOW_LATENCY` 属性对该设备无效果（试验后回退，未采纳）
 

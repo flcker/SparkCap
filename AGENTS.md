@@ -1,8 +1,8 @@
 # SparkCap 项目约定
 
-Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优先、DShow 兜底、FFmpeg 负责网络流 RTSP），**屏幕域已交付**（显示器 + 窗口合并域：DXGI/WGC 主链 + GDI 兜底，已合并 main），**音频域落地中**（麦克风 + 扬声器回采，WASAPI 单链，feature/audio 分支）——路线图与架构预留见 docs/roadmap.md 与技术选型 §10。API 风格延续 videoInput 的简单直接。
+Windows 统一采集库（C 门面 DLL），**三域全部交付**：**摄像头**（MF 优先、DShow 兜底、FFmpeg 负责网络流 RTSP）、**屏幕/窗口**（DXGI/WGC 主链 + GDI 兜底，显示器与窗口为合并域）、**音频**（麦克风 + 扬声器回采 loopback，WASAPI 单链）——路线图与架构见 docs/roadmap.md 与技术选型 §10。API 风格延续 videoInput 的简单直接。
 
-## 必读文档（v1.1，均为开发与验收依据）
+## 必读文档（均为开发与验收依据）
 
 | 文档 | 职责 |
 |---|---|
@@ -20,7 +20,7 @@ Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优�
 ## 技术栈
 
 - C++20（内部实现），对外纯 C ABI（`extern "C"`）
-- 后端：Media Foundation（IMFSourceReader）/ DirectShow（ISampleGrabber）/ FFmpeg（静态内嵌，仅 RTSP/RTP + H.264/HEVC 解码 + D3D11VA）
+- 后端：Media Foundation（IMFSourceReader）/ DirectShow（ISampleGrabber）/ FFmpeg（静态内嵌，仅 RTSP/RTP + H.264/HEVC 解码 + D3D11VA）/ DXGI Desktop Duplication + WGC + GDI（屏幕/窗口）/ WASAPI（音频，共享模式事件驱动）
 - 构建：CMake ≥ 3.24，VS2022 任意小版本（v143 工具集 ≥ 14.30，CMake 配置期强制检查），静态 CRT（/MT，Debug /MTd）
 - FFmpeg 静态库由维护者以锁定工具集 v14.44 编译（记录于 `third_party/ffmpeg/VERSION`）；14.x 系列二进制兼容，旧版 VS2022 可直接链接，无需本地重编
 - 平台：Windows 10/11 x64
@@ -39,9 +39,10 @@ Windows 统一采集库（C 门面 DLL）：**摄像头域已交付**（MF 优�
 
     include/            # 公开头（sparkcap.h、sparkcap_types.h，仅此两个）
     src/                # 门面（facade.cpp、sparkcap.def）
-      common/           # 跨域设施（回调守卫、日志路由、环形队列、宽字符转换、json 配置加载、像素格式映射集）
+      common/           # 跨域设施（回调守卫、日志路由、环形队列、宽字符转换、json 配置加载、像素格式映射集、QPC→100ns 时钟）
       camera/           # 摄像头域（device_manager、后端抽象、backend_mf/dshow/ffmpeg、qedit_min）
-      screen/           # 屏幕域（DXGI 显示器整屏捕获 backend_dxgi，v2 首域）
+      screen/           # 屏幕域（screen_session、backend_dxgi/wgc/gdi——显示器整屏 + 窗口捕获）
+      audio/            # 音频域（audio_session、backend_wasapi、audio_format 纯函数头）
     examples/           # 示例：给接入方抄的最小用法，不做判定（永不因断言失败）
     tests/              # 测试：机器判定 pass/fail（ctest 驱动，回归门禁）
     third_party/ffmpeg/ # 构建脚本与 VERSION（产物不入库，见 FFmpeg 编译指南）
@@ -71,4 +72,4 @@ FFmpeg 许可合规是待确认事项（Spec §9-4）：结论出来前，禁止
 
 ## 当前状态
 
-**M1–M4 全部完成**（功能与工程基座齐备，12/12 测试全绿）。后续演进：错误回调 + 日志回调 API 已落地（Spec §4.5，导出 16 符号）；设备热插拔事件（Spec §9-5）待立项。验收进展：A1 USB 摄像头（J.ZAO 全链路实测通过）完成；A5/N1 延迟实测**未达标**挂账（J.ZAO 全链路 median 105–113ms ≈ 3.3 帧，库内/库外占比未拆分，待补库内交付延迟测量后决策口径，Spec §9-6）；待 A6/N4 24h 长跑（soak_24h 1440，夜间执行）与 A5 口径决策后打 v1.0.0 tag。Spec §9 其余待确认事项：音频采集、PTZ(ONVIF)、x86。许可已定 LGPL-3.0（法务终审待完成）。
+**三域全部交付**（M1–M4 + 屏幕域 Spec v1.4 + 音频域 Spec v1.5；16 项测试：unit 6 + integration 8 + soak 2；导出 39 符号）。后续演进：设备热插拔事件（Spec §9-5）待立项。验收进展：A1 USB 摄像头（J.ZAO 全链路实测通过）完成；A5/N1 延迟实测**未达标**挂账（J.ZAO 全链路 median 105–113ms ≈ 3.3 帧，库内/库外占比未拆分，待补库内交付延迟测量后决策口径，Spec §9-6）；A6 首跑 16h45m/11716 轮/0 失败/内存平稳（未满程不判定，周末重挂 24h，数据见 roadmap）；待 A6 收口与 A5 口径决策后打 v1.0.0 tag。Spec §9 其余待确认事项：PTZ(ONVIF)、x86。许可已定 LGPL-3.0（法务终审待完成），全源文件已带 SPDX 版权头。
