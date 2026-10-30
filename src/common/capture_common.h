@@ -31,4 +31,15 @@ private:
 // WASAPI QPCPosition 本身即 QPC 的 100ns 表示——A/V 对齐的前提，Spec F25）。
 int64_t now100ns();
 
+// 纯换算（now100ns 的可测内核，unit 回归门 test_audio_pure）：
+// 乘除拆分防溢出——qpc*10^7 中间值在 uptime > ~24.8h（10MHz QPC）即溢出
+// int64（实测 26h 机器踩中：时间戳翻负、静音合成回追后跳）。分解后商（秒）
+// ×1e7 溢出需 uptime > ~2.9 万年；余数项 < freq*1e7 ≈ 10^14，均安全。
+inline int64_t qpcTo100ns(int64_t qpc, int64_t freq)
+{
+    if (freq <= 0)
+        return 0;
+    return (qpc / freq) * 10000000LL + ((qpc % freq) * 10000000LL) / freq;
+}
+
 } // namespace sparkcap

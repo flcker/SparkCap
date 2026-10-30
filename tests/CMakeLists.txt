@@ -49,6 +49,16 @@ target_compile_options(test_unit_pixfmt PRIVATE /W4 /WX /utf-8 /external:W0)
 add_test(NAME unit_pixfmt COMMAND test_unit_pixfmt)
 set_tests_properties(unit_pixfmt PROPERTIES LABELS "unit")
 
+# 音频纯逻辑（QPC 溢出回归/格式映射/帧拷贝语义）：头内联直编 + 链 DLL 测 C ABI
+add_executable(test_unit_audio_pure unit/test_audio_pure.cpp)
+target_include_directories(test_unit_audio_pure PRIVATE ${SRC_DIR} ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(test_unit_audio_pure PRIVATE sparkcap uuid)  # KSDATAFORMAT_SUBTYPE_* GUID
+target_compile_definitions(test_unit_audio_pure PRIVATE
+    SPARKCAP_ENABLE_AUDIO=$<BOOL:${SPARKCAP_ENABLE_AUDIO}>)
+target_compile_options(test_unit_audio_pure PRIVATE /W4 /WX /utf-8)
+add_test(NAME unit_audio_pure COMMAND test_unit_audio_pure)
+set_tests_properties(unit_audio_pure PROPERTIES LABELS "unit")
+
 # ---- integration（需设备或流；从仓库根运行以解析 tools/ 与 sparkcap.json）----
 function(sparkcap_integration_test name)
     add_executable(test_int_${name} integration/test_${name}.cpp)
