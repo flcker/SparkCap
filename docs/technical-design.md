@@ -285,3 +285,96 @@ Windows 音频 API 全景（采集能力）：
 **API 族（12 符号，导出 27 → 39）**：`sparkcap_audio_list_microphones / list_loopbacks / open / open_loopback / set_frame_callback / set_error_callback / start / get_frame / stop / close / copy_frame / release_frame`。独立帧结构 `sparkcap_audio_frame_t`（data/size/timestamp + samples_per_channel/sample_rate/channels/sample_format，interleaved）与回调类型 `sparkcap_audio_frame_cb`——不与视频 `sparkcap_frame_t` 混用（维度语义不同：samples vs width/height），域级帧工具。枚举条目 `sparkcap_audio_device_info_t`（id[256] 字符串 / name[128] / is_default / mix format 预览三项）。**id 用字符串**（不跟 camera 的 int 序号）：音频设备拓扑变化最频繁（蓝牙连接/断开），WASAPI endpoint ID 是原生稳定标识，open 按串匹配无需"重枚举对齐序号"。`start(dev, fps)` 签名三域同构，fps 仅 0 合法（采样率即节流）。
 
 **实现路径**：`src/audio/`——`backend_wasapi.*`（单后端：IMMDeviceEnumerator 枚举 eCapture/eRender 端点 → IAudioClient 共享模式事件驱动 Initialize → IAudioCaptureClient GetBuffer/ReleaseBuffer 循环；loopback 加 LOOPBACK flag 与静音帧合成）；会话层复用 `common/frame_queue.h` + CallbackGuard，时间戳 QPC→100ns 三域同源。`SPARKCAP_FEATURE_AUDIO = (1 << 3)` 功能位 + `SPARKCAP_ENABLE_AUDIO` CMake option（默认 ON，对齐 §10.4 默认全开）。
+
+## 11. 设备热插拔通知（v1.x 设计稿，Spec §9-5 立项评审用）
+
+### 11.1 目标与非目标
+
+**目标**：设备世界变化（USB 摄像头插拔、音频端点增删/默认变化、显示器拓扑变化）时**主动通知应用**"该域的设备列表已变化，请重新枚举"。当前三域均无主动通知——应用只能轮询 list 或等运行中会话的 `STREAM_LOST` 事后推断。
+
+**非目标**：不做增量推送（事件不携带设备条目——条目结构与 list 结果同源，事件只传"世界变了"）；不做 IP Camera（RTSP）的在线状态通知（无 PnP 语义，流断已有 `STREAM_LOST`）；不做断线自动重连（重连策略是应用的职责，库只提供准确的两次通知）。
+
+### 11.2 API 设计（1 符号，导出 39 → 40）
+
+```c
+typedef enum sparkcap_domain_t {
+    SPARKCAP_DOMAIN_CAMERA = 1,
+    SPARKCAP_DOMAIN_SCREEN = 2,
+    SPARKCAP_DOMAIN_AUDIO  = 3,
+} sparkcap_domain_t;
+
+typedef enum sparkcap_hotplug_event_t {
+    SPARKCAP_HOTPLUG_ADDED   = 1,  /* 设备加入（拓扑变化） */
+    SPARKCAP_HOTPLUG_REMOVED = 2,  /* 设备移除（拓扑变化） */
+    SPARKCAP_HOTPLUG_CHANGED = 3,  /* 列表内容可能变化但拓扑未变
+                                      （如音频默认端点切换影响 is_default） */
+} sparkcap_hotplug_event_t;
+
+typedef void (*sparkcap_hotplug_cb)(sparkcap_backend_t* backend,
+                                    sparkcap_domain_t domain,
+                                    sparkcap_hotplug_event_t event,
+                                    void* userdata);
+
+SPARKCAP_API int sparkcap_set_hotplug_callback(sparkcap_backend_t* backend,
+                                               sparkcap_hotplug_cb cb,
+                                               void* userdata);
+```
+
+**为什么是粗粒度"重新枚举"型而非增量推送**：
+
+- 三域条目结构不同（`device_info` / `display_info` / `audio_device_info`），增量事件的载荷要么 union 要么三族回调——复杂度立刻翻倍
+- Windows 通知源（DBT / `IMMNotificationClient` / `WM_DISPLAYCHANGE`）本身只给"有变化"或设备符号名，映射到完整条目需要库立即再枚举——等于库替应用多做一次 list，且快照在分发时刻可能已过期
+- **list 是唯一真相源**的哲学与两段式枚举同构：库只保证"事件后重新 list 能拿到新世界"，应用侧 UI 刷新与自动重连两大场景都自然成立，且重新 list 天然幂等（事件风暴无害）
+
+`domain` 枚举独立于 `sparkcap_feature_t`（feature 报告构建能力，domain 标识事件归属，概念不混用）。回调注册时激活通知设施（首个注册者拉起通知线程），`destroy_backend` 前自动注销；重复注册覆盖前值（与日志回调同语义）。
+
+### 11.3 三域检测机制
+
+| 域 | 机制 | 事件映射 |
+|---|---|---|
+| camera | `RegisterDeviceNotification`（`DEVICE_NOTIFY_WINDOW_HANDLE`，KSCATEGORY_VIDEO_CAMERA + KSCATEGORY_CAPTURE 两接口类）→ `WM_DEVICECHANGE`（DBT_DEVICEARRIVAL / DBT_DEVICEREMOVECOMPLETE） | ADDED / REMOVED |
+| audio | `IMMNotificationClient`（`OnDeviceAdded/Removed/StateChanged` → ADDED/REMOVED；`OnDefaultDeviceChanged` → CHANGED），经 `PostMessage` 汇聚到通知线程 | ADDED / REMOVED / CHANGED |
+| screen | `WM_DISPLAYCHANGE`（窗口消息）为主 + `IDXGIFactory::IsCurrent()` 低频轮询（1s）兜底（虚拟显示器/远程会话路径可能无广播） | ADDED / REMOVED |
+
+**统一汇聚架构**：库内单条通知线程 + 隐藏消息窗口——camera 的 DBT 与 screen 的 `WM_DISPLAYCHANGE` 走窗口消息，audio 的 COM 回调（系统线程上下文）`PostMessage` 转发到同一窗口。用户回调**永远在这条库通知线程上执行**，线程契约单一可预测（与采集线程分离，回调慢不阻塞采集、慢采集不拖延通知）。
+
+### 11.4 回调契约（与 Spec §4.4/§4.5 帧回调同风格）
+
+- **线程**：库通知线程（串行分发）
+- **允许**：`list_*`（重入安全——通知线程不持 backend 设备锁；事件后立即重新枚举是设计支持的主场景）、`copy_frame` / `release_frame`
+- **禁止**：`destroy_backend`（返回 `SPARKCAP_ERR_IN_CALLBACK`，复用回调守卫）；stop/close 不禁止（只影响自己会话）但建议快速返回——串行分发下慢回调拖延后续事件
+- 事件可能**连续多次**到达（音频设备状态抖动）——不做去抖，靠"重新 list 幂等"消化；与运行中会话的 `STREAM_LOST` 相互独立且**次序不保证**（两条通道），应用两侧都要幂等
+
+### 11.5 与既有通知的关系
+
+```
+设备拔出 ──┬── 运行中会话错误回调 STREAM_LOST（会话级：这条流死了）
+           └── 热插拔回调 REMOVED（backend 级：设备列表变了，重新枚举）
+```
+
+两路正交：`STREAM_LOST` 管"流"，热插拔管"世界"。应用的标准重连模式：收 `STREAM_LOST` → stop/close 旧会话 → 收热插拔 ADDED（或直接主动）→ 重新 list → open 新设备。**热插拔通知的存在让"等设备回来"从轮询变为事件驱动**，也补齐了"未运行的设备被拔走"这类无会话可报的盲区。
+
+### 11.6 边界（如实记录）
+
+- **虚拟摄像头/虚拟声卡**的装卸是软件行为，不触发 PnP 通知——事件可能不来（拔虚拟设备仅影响"下次 list 少一条"，无主动通知；边界与物理设备不同，文档写明）
+- RTSP/网络流不参与（无 PnP 语义）
+- 裁剪模式：`SPARKCAP_ENABLE_SCREEN=OFF` 等裁掉的域无通知源，自然不产生该域事件（应用可经 `sparkcap_query_features` 预判）
+- 事件仅在拓扑/列表语义变化时尽量准确——不承诺与设备管理器的逐条对齐（如一个物理动作触发多条事件）
+
+### 11.7 实现拆解与验收
+
+| 模块 | 内容 | 估量 |
+|---|---|---|
+| `src/common/notify_hub.*` | 通知线程 + 隐藏消息窗口 + 分发（三域共用） | ~150 行 |
+| camera 接线 | DBT 注册/解析（复用 notify_hub 窗口） | ~80 行 |
+| audio 接线 | `IMMNotificationClient` 实现（COM 回调 → PostMessage） | ~100 行 |
+| screen 接线 | `WM_DISPLAYCHANGE` + `IsCurrent` 轮询定时器 | ~60 行 |
+| facade | `sparkcap_set_hotplug_callback` + 守卫 | ~60 行 |
+
+验收（I 系新增，半自动——提示插拔）：拔 USB 摄像板 → REMOVED 事件 + 运行中会话 `STREAM_LOST`；插入 → ADDED 后 list 计数 +1；切默认播放设备 → CHANGED；拔显示器（如可热插）→ screen REMOVED。unit：domain/event 枚举值 ABI 锁 + null 守卫。
+
+### 11.8 开放问题（评审定夺）
+
+1. **版本号对账**（丢事件兜底：每域原子计数器，list 时返回快照）——第一版不做（事件后 list 幂等已覆盖主场景），真有丢事件案例再加（加性 API，不破坏 ABI）
+2. **音频 `StateChanged` 细分**（DISABLED/NOTPRESENT 映射 REMOVED 还是 CHANGED）——实现期实测定，倾向"设备不可用即 REMOVED"
+3. **窗口最小化时的 screen 通知**——`WM_DISPLAYCHANGE` 为广播消息与会话状态无关，预计不受影响，实测确认
