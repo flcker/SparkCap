@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // FFMPEG=OFF 编译期裁剪桩（技术选型 §10.4）。
 // 头文件、导出面、ABI 均不变：枚举不出现 RTSP 设备（JSON 注入为空），
 // 误调用（不会发生，列表无此来源）返回 UNSUPPORTED。

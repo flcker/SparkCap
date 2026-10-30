@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 示例：最小取帧用法（给人抄的代码，不做判定——断言在 tests/）。
 // 运行：out/x64/Release/capture.exe [mf|dshow|ffmpeg] [WxH]
 //   mf      打开第一台 Media Foundation 设备（默认）

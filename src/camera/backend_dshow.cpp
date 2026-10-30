@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // DShow 后端 —— 设备枚举（M1a）+ 采集会话（M1c）。
 // 枚举：SystemDeviceEnum / CLSID_VideoInputDeviceCategory，DevicePath 用于跨后端去重。
 // 会话：ISampleGrabber 回调（BufferCB）+ 内部帧拷贝缓冲。

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：跨域通用设施（src/common/ 私有头）。
 // 回调守卫与日志路由是域无关设施（v2 音频/屏幕域直接复用）；
 // 定义在 capture_common.cpp。

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // U13：音频域纯逻辑回归门（docs/testing-guide.md §5.1）
 // 覆盖三处零环境依赖逻辑：QPC→100ns 溢出回归（曾致 uptime >24.8h 时间戳
 // 翻负）、WAVEFORMATEX→采样格式映射（mix format 预览/上报共用）、

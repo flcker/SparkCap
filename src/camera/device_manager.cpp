@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 设备管理器 —— 双后端枚举、合并去重（M1a）。
 
 #include "device_manager.h"

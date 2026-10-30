@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // U8–U10：帧深拷贝与释放（C ABI，docs/testing-guide.md §5.1）
 
 #include "../test_macros.h"

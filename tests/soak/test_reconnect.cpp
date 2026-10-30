@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // S1/S2：断流重连（F10/N5，testing-guide §5.3）
 // 场景：杀 MediaMTX 模拟断流 → 库自动重连（指数退避）→ 重启流服务 → 恢复取帧。
 // N5 度量：流恢复可用起，至 get_frame 成功 ≤ 10s。

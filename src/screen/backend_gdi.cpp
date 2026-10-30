@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 屏幕域 GDI 兜底后端（F20）—— 一个实现服务两类目标：
 //   显示器：CreateDCA(设备名) + BitBlt(SRCCOPY | CAPTUREBLT) 直进 32bpp top-down
 //           DIB（GetDC(NULL)+偏移 的等价物；按输出设备名取 DC，多屏各自原点）

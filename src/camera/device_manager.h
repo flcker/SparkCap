@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：设备管理器（src/ 私有头）。
 // 技术选型 §4：双后端枚举，合并去重，维护设备表；打开时按设备来源自动选后端。
 

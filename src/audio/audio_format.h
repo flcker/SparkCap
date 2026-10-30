@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：音频格式纯工具（src/audio/ 私有头，全内联零依赖）。
 // 从 backend_wasapi.cpp 归拢——纯函数可测性（unit 回归门 test_audio_pure），
 // 后端与 facade 均可包含。

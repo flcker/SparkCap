@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 集成测试共享会话用例集（testing-guide §5.2 I 系；C ABI 黑盒）
 // 由 test_mf.cpp / test_dshow.cpp / test_rtsp.cpp 以不同后端参数复用。
 // 断言失败返回非零 case 计数；设备缺失返回 -1（调用方 SKIP）。

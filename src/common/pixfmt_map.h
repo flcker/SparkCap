@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：MF/DShow 像素格式映射（src/ 私有头，集中供实现与单测使用）。
 // 映射集即"库支持的输出侧格式"（技术选型 §5；F9 保真：仅设备/流原生输出）。
 // FFmpeg 的 AVPixelFormat 映射在 pixfmt_av.h（仅 FFMPEG 构建编入，

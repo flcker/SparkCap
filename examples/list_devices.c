@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // M1 Demo：枚举设备（F1）+ 能力查询（F11，打印前 3 条）。
 // 构建：cmake --build --preset release 后运行 out/x64/Release/list_devices.exe
 

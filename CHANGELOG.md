@@ -6,6 +6,8 @@
 
 ### Changed
 
+- **全源文件补版权头**（开源合规扫描整改）：56 个 .c/.cpp/.h（include/src/examples/tests）统一头部两行 `Copyright (c) 2026 flcker <molanyousi@gmail.com>` + `SPDX-License-Identifier: LGPL-3.0-or-later`——SPDX 标识符供 scancode/FOSSA 等工具机器可读；`or-later` 与内嵌 FFmpeg（LGPL-2.1-or-later）授权链一致。LGPLv3 本身不强制逐文件声明，此为开源最佳实践补齐。顺带将涉及文件工作区行尾统一为 CRLF（对齐 .gitattributes text 声明，消除混合行尾的 git 警告刷屏）。构建零警告、ctest -L unit 6/6 不变
+
 - **A5/N1 延迟实测：未达标挂账**（Spec §9-6，留后开发）：拍屏法（工具修复后）实测 J.ZAO W4AS 640×480 NV12@30 全链路 median 105–113ms（≈3.3 帧），未达 N1"≤2 帧"标准。全链路含屏幕 VSync（估 17–33ms）、设备曝光/读出（估 30–50ms）、USB 传输（估 10–15ms）等库外环节，库内占比未直接测量——后续补库内交付延迟测量（帧时间戳→回调触发/get_frame 返回）后再决策口径（修订 N1 边界为库内交付，或维持全链路并按设备分级）。实验排除库内可优化项：`MF_LOW_LATENCY` 属性对该设备无效果（试验后回退，未采纳）
 
 - **公开头接口面整理（v1.0.0 定版前最后一次 ABI 调整）**：帧工具去域前缀——`sparkcap_camera_copy_frame`/`sparkcap_camera_release_frame` → `sparkcap_copy_frame`/`sparkcap_release_frame`（签名不接 camera 句柄、实现为类型级 magic-header，且 `sparkcap_frame_t` 为库级类型，按两级命名规则判据归通用层；v2 屏幕域帧直接复用）；`sparkcap_set_log_callback` 移除 device 参数（路由为进程级全局，原参数仅做校验，签名与实现对齐；回调签名中的来源 device 参数保留）；结构体字段 `pixelFormat` → `pixel_format`（全头文件唯一 camelCase 字段，统一 snake_case）；`sparkcap_error_cb` 参数 `int` → `sparkcap_err_t`（对齐"错误码只用枚举值"规则；MSVC 下与 int 同 4 字节，ABI 不变）；头文件与 .def 重排为两级结构（库信息 → 上下文 → 域发现 → 域会话 → 帧工具），`query_features`/`version` 提至最前（接入方首个可调），`list_devices` 不再先于 `create_backend`

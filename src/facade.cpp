@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap C 门面（Spec §4）。
 // M1a：create_backend / list_devices / destroy_backend；M1b：MF 会话
 // （open/start/get_frame/stop/close）+ copy_frame / release_frame。

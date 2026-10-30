@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：帧环形队列（src/ 私有头，模板实现）。
 // 技术选型 §4 统一帧输出层：环形队列缓冲 N 帧——拉取模式按序消费不丢帧（N2）；
 // 满时丢弃最旧（保最新语义）。

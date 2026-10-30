@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 音频域会话层 —— 目标模型（麦克风/回采）+ 环形队列与回调（复用 camera/screen
 // 会话模式）+ 单后端（WASAPI，无降级链）。
 // 采集线程：后端 captureNext 出帧（loopback 静默期由后端合成静音帧，F25）→

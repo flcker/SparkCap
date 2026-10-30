@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 屏幕域 DXGI Desktop Duplication 后端 —— 显示器枚举（F12）+ 定位 + 采集（F13–F15）。
 // 枚举：IDXGIFactory1::EnumAdapters1 → EnumOutputs（AttachedToDesktop），
 //       displayId = adapterIdx*16 + outputIdx（稳定序号，open/start 时重枚举匹配）。

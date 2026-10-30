@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I 系（屏幕域，F12–F15）：testing-guide §5.2。
 // 无显示器环境（含 SCREEN=OFF 构建的空列表）自动 SKIP 会话用例。
 

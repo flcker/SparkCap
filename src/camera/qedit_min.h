@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // qedit.h 已从新版 Windows SDK 移除，此处内嵌 ISampleGrabber 最小声明（src/ 私有头）。
 // 声明与旧版 um/qedit.h 一致；实现位于 qedit.dll（x64/x86 均随系统部署），
 // IID 符号在 strmiids.lib。CLSID 值已经本机注册表验证。

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：屏幕域会话层（src/screen/ 私有头，替代原 backend_dxgi.h 的会话部分）。
 // 目标模型：显示器（displayId）/ 窗口（hwnd）两类，open / open_window 时确定
 // （技术选型 §10.5：域 = 桌面内容捕获，显示器/窗口是目标类型分叉 open 入口）。

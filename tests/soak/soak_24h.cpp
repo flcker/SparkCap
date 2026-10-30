@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // S3 / A6 / N4：三后端轮换长稳（testing-guide §5.3）
 // 用法：soak_24h.exe [分钟数]
 //   默认 2 分钟（冒烟，进常规回归）；夜间验收跑 1440（24h）

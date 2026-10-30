@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：跨域通用设施定义（与 capture_common.h 配对）。
 
 #include "capture_common.h"

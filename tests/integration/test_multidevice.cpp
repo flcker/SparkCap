@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I12 / A8：多设备并发——同时开 2 台独立取帧互不干扰（testing-guide §5.2）
 
 #include "../test_macros.h"

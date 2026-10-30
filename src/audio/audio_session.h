@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：音频域会话层（src/audio/ 私有头）。
 // 目标模型：麦克风（Microphone）/ 扬声器回采（Loopback）两类，open /
 // open_loopback 时确定（技术选型 §10.6：域 = 音频采集，kind 分叉 open 入口，

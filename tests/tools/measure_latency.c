@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // N1/A5 延迟测量（拍屏法之二：测量端）——testing-guide §5.3 S4
 // 前置：flash_screen.exe 已运行（同目录 flash_log.csv 记录翻转 QPC）、
 //       摄像头对准闪烁窗口。

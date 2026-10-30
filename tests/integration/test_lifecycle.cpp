@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I 系（设备无关部分）：API 参数与误用矩阵（testing-guide §5.2）
 // close 后句柄矩阵依赖真实设备，由 test_mf/test_dshow 的 case_session_flow 覆盖（I9）。
 

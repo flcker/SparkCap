@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // MF 后端 —— 设备枚举（M1a）+ 采集会话（M1b）。
 // 枚举：MFEnumDeviceSources，symbolic link 用于跨后端去重。
 // 会话：IMFSourceReader 异步读取，native 类型直出（F9 保真，不隐式转换）；

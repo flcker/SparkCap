@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：采集后端抽象与会话（src/camera/ 私有头，不入 include/）。
 // 命名规范 §4：抽象接口保留 I 前缀；命名空间 sparkcap。
 // 回调守卫与日志路由等跨域设施在 common/capture_common.h。

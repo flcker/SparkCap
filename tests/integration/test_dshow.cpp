@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I 系（DShow 后端）：testing-guide §5.2，设备缺失时整套 SKIP
 
 #include "../test_macros.h"

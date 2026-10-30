@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 屏幕域会话层 —— 目标模型（显示器/窗口）+ 后端选择（双降级链）+
 // fps 节流（F18）+ 窗口状态轮询（F19）+ 环形队列与回调（复用 camera 会话模式）。
 // 采集线程：窗口目标每回合先查状态（IsWindow/IsIconic，user32 纳秒级）——

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // FFmpeg 后端 —— RTSP 采集会话（M3）。
 // libav* 头仅在本文件 include（命名规范红线 4），符号经 .def 隔离不进导出表。
 // 软解（M3）：av_read_frame → 解码 → planar 帧重排为连续布局入环形队列；

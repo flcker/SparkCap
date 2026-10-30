@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 屏幕域 WGC 后端 —— 窗口捕获主后端（F17，Win10 1903+）。
 // WinRT COM 直调（零 C++/WinRT 包依赖）：
 //   D3D11 device → CreateDirect3D11DeviceFromDXGIDevice → IDirect3DDevice

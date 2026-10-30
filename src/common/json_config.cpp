@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // IP Camera JSON 配置加载（F8）——极简解析，仅支持 sparkcap.json 固定 schema。
 // 不引入第三方 JSON 库（最小够用）：文件缺失/格式错误一律返回空，不影响系统设备枚举。
 

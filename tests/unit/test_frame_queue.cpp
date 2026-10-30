@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // U5–U7：帧环形队列语义（docs/testing-guide.md §5.1）
 
 #include "../test_macros.h"

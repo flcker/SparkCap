@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I 系（音频域，F22–F26）：testing-guide 分层。
 // 无音频端点环境（含 AUDIO=OFF 构建的空列表）自动 SKIP 会话用例。
 // 本机有真实音频设备时跑真实验收（枚举字段/双格式模式/静音帧契约）。

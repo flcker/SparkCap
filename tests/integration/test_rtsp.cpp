@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I5/I6/I7（RTSP/FFmpeg 后端）：本地测试流（tools/start_test_stream.ps1），无流 SKIP
 
 #include "../test_macros.h"

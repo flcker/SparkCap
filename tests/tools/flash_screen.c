@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // N1/A5 延迟测量辅助（拍屏法之一：闪烁器）——testing-guide §5.3 S4
 // 全屏窗口按固定周期黑白交替，每次翻转把 QPC 时间戳与颜色写入 flash_log.csv。
 // 配合 measure_latency.exe（摄像头拍屏 + 翻转检测）得到端到端延迟。

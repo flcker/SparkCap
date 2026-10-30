@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // 音频域 WASAPI 后端 —— 单后端（技术选型 §10.6，无降级链）。
 // 枚举（F22/F23）：IMMDeviceEnumerator::EnumAudioEndpoints(eCapture/eRender,
 //   DEVICE_STATE_ACTIVE) → endpoint Id 字符串（GetId）+ 友好名

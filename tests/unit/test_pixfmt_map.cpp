@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // U12：三后端像素格式映射完整性（docs/testing-guide.md §5.1）
 // 语义锁：任一后端支持的 sparkcap_pixfmt_t 值，必须有到该后端原生格式的双向对应。
 

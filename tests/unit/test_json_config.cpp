@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // U1–U4：IP Camera JSON 配置解析（docs/testing-guide.md §5.1）
 
 #include "../test_macros.h"

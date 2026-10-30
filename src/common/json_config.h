@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // SparkCap 内部：IP Camera JSON 配置加载（src/ 私有头，F8）。
 // 极简解析器，仅覆盖 Spec §6 定义的固定 schema：
 //   { "ip_cameras": [ { "name": "...", "url": "rtsp://...", "transport": "tcp" } ] }

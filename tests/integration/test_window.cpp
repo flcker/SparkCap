@@ -1,3 +1,6 @@
+// Copyright (c) 2026 flcker <molanyousi@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // I 系（屏幕域窗口捕获，F16–F20）：testing-guide §5.2。
 // 自包含可自动化：测试进程自建窗口画图案（不依赖外部应用），覆盖
 // list_windows 两段式 / open_window 内容与尺寸 / set_options 时序 / fps 限速 /
