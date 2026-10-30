@@ -144,6 +144,15 @@ add_executable(capture examples/capture.c)
 target_link_libraries(capture PRIVATE sparkcap)
 target_compile_options(capture PRIVATE /W4 /WX /utf-8)
 
+# 三域各一最小示例（接入方按域抄）：screen（显示器整屏）、audio（mic/loopback）
+add_executable(screen_capture examples/screen_capture.c)
+target_link_libraries(screen_capture PRIVATE sparkcap)
+target_compile_options(screen_capture PRIVATE /W4 /WX /utf-8)
+
+add_executable(audio_capture examples/audio_capture.c)
+target_link_libraries(audio_capture PRIVATE sparkcap)
+target_compile_options(audio_capture PRIVATE /W4 /WX /utf-8)
+
 # ---- 测试（tests/，ctest 驱动，见 docs/testing-guide.md）----
 enable_testing()
 add_subdirectory(tests)

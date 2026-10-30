@@ -106,3 +106,19 @@ target_compile_options(flash_screen PRIVATE /W4 /WX /utf-8)
 add_executable(measure_latency tools/measure_latency.c)
 target_link_libraries(measure_latency PRIVATE sparkcap)
 target_compile_options(measure_latency PRIVATE /W4 /WX /utf-8)
+
+# A8 多设备并发诊断（组合矩阵定性：互斥/后开必断/供帧不足）
+add_executable(multi_diag tools/multi_diag.cpp)
+target_link_libraries(multi_diag PRIVATE sparkcap)
+target_compile_features(multi_diag PRIVATE cxx_std_20)
+target_compile_options(multi_diag PRIVATE /W4 /WX /utf-8)
+
+# A8 排查：枚举对运行中会话的影响（open 查找路径的枚举副作用定性）
+add_executable(enum_diag tools/enum_diag.c)
+target_link_libraries(enum_diag PRIVATE sparkcap)
+target_compile_options(enum_diag PRIVATE /W4 /WX /utf-8)
+
+# A8 定案：纯 MF API 取帧（不经库）——分辨设备/环境问题与库 MF 路径 bug
+add_executable(mf_probe tools/mf_probe.cpp)
+target_link_libraries(mf_probe PRIVATE mf mfplat mfreadwrite mfuuid ole32)
+target_compile_options(mf_probe PRIVATE /W4 /WX /utf-8)

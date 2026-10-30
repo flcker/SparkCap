@@ -1,0 +1,63 @@
+# CI（AGENTS.md 提交前验证的自动化子集，零设备依赖部分）
+# 策略：FFmpeg 静态库不入库（third_party/ffmpeg 产物见编译指南），CI 跑
+# FFMPEG=OFF 裁剪构建（182KB 纯本地 DLL）——覆盖编译零警告（/W4 /WX）、
+# unit 全绿、导出面 39 符号白名单 + 无 av* 泄漏、无第三方 DLL 依赖。
+# 全功能（FFMPEG=ON）构建与 integration/soak（需设备）由维护者本地执行。
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # VS 工具链入 PATH（cl/cmake 配置 MSVC + dumpbin 导出面检查用）
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure (FFMPEG=OFF)
+        run: cmake -B build-ci -DSPARKCAP_ENABLE_FFMPEG=OFF
+
+      - name: Build (zero-warning gate: /W4 /WX)
+        run: cmake --build build-ci --config Release
+
+      - name: Unit tests
+        run: ctest --test-dir build-ci -C Release -L unit --output-on-failure
+
+      - name: Export surface (39 symbols, sparkcap_ whitelist, no av*)
+        shell: pwsh
+        run: |
+          $symbols = dumpbin /exports out/x64/Release/sparkcap.dll |
+            Select-String -Pattern '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value }
+          if ($symbols.Count -ne 39) {
+            Write-Host "FAIL: export count = $($symbols.Count), expected 39"
+            $symbols | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          $bad = $symbols | Where-Object { $_ -notmatch '^sparkcap_' }
+          if ($bad) {
+            Write-Host "FAIL: non-sparkcap exports: $($bad -join ', ')"
+            exit 1
+          }
+          Write-Host "export surface OK: $($symbols.Count) symbols, all sparkcap_*"
+
+      - name: Dependencies (no third-party DLL)
+        shell: pwsh
+        run: |
+          $deps = dumpbin /dependents out/x64/Release/sparkcap.dll |
+            Select-String -Pattern '^\s+(\S+\.dll)\s*$' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value }
+          $third = $deps | Where-Object { $_ -match '^(av|sw)' }
+          if ($third) {
+            Write-Host "FAIL: third-party deps found: $($third -join ', ')"
+            exit 1
+          }
+          Write-Host "dependents OK: $($deps -join ', ')"

@@ -387,8 +387,21 @@ int screenListDisplays(std::vector<sparkcap_display_info_t>& out)
         if (EnumDisplayDevicesW(item.desc.DeviceName, 0, &mon, 0) && mon.DeviceString[0] != L'\0')
             name = mon.DeviceString;
         toUtf8(name, info.name, sizeof(info.name));
-        info.width = item.desc.DesktopCoordinates.right - item.desc.DesktopCoordinates.left;
-        info.height = item.desc.DesktopCoordinates.bottom - item.desc.DesktopCoordinates.top;
+        // 尺寸与帧交付同口径（物理像素，用户所见方向）：DesktopCoordinates 在
+        // 非旋转屏受 DPI 虚拟化返回逻辑坐标（见 start 处注释的怪癖——实测
+        // 4K@150% 主屏枚举 2560x1440 / 帧 3840x2160，口径分裂）；DEVMODE 恒
+        // 物理，旋转屏为旋转后尺寸（与 duplication 转置后帧一致）。GDI 兜底
+        // 帧同样物理口径（GetDeviceCaps DC 尺寸），三链路统一。
+        DEVMODEW dm = {};
+        dm.dmSize = sizeof(dm);
+        if (EnumDisplaySettingsW(item.desc.DeviceName, ENUM_CURRENT_SETTINGS, &dm) &&
+            dm.dmPelsWidth > 0 && dm.dmPelsHeight > 0) {
+            info.width = static_cast<int>(dm.dmPelsWidth);
+            info.height = static_cast<int>(dm.dmPelsHeight);
+        } else {  // DEVMODE 不可得（异常驱动态）：回退旧口径，好过零值
+            info.width = item.desc.DesktopCoordinates.right - item.desc.DesktopCoordinates.left;
+            info.height = item.desc.DesktopCoordinates.bottom - item.desc.DesktopCoordinates.top;
+        }
         info.is_primary = (item.desc.Monitor == primary) ? 1 : 0;
         out.push_back(info);
     }

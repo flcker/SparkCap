@@ -81,11 +81,12 @@ typedef struct sparkcap_device_info_t {
 
 /* 显示器信息（F12；屏幕域枚举条目）。
  * id 为当次枚举内的稳定序号，供 sparkcap_screen_open 使用（显示拓扑变化后
- * 以重新枚举为准）；width/height 为当前桌面分辨率。 */
+ * 以重新枚举为准）；width/height 为当前分辨率（物理像素，用户所见方向——
+ * 与帧交付同口径，非 DPI 逻辑分辨率）。 */
 typedef struct sparkcap_display_info_t {
     int  id;         /* displayId */
     char name[256];  /* 显示器友好名（回退 GDI 设备名，如 \\.\DISPLAY1） */
-    int  width;      /* 当前分辨率（DesktopCoordinates） */
+    int  width;      /* 当前分辨率（物理像素，与帧同口径） */
     int  height;
     int  is_primary; /* 主显示器 */
 } sparkcap_display_info_t;

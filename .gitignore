@@ -1,8 +1,6 @@
-# 构建输出
+# 构建输出（build* 通配：build/、build-min/、build-noscreen/、build-ci/ 等变体）
 out/
-build/
-build-min/
-build-noscreen/
+build*/
 
 # CMake
 CMakeCache.txt
