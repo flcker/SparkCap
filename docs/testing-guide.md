@@ -102,12 +102,15 @@
 |---|---|---|---|
 | S1 | 断流重连：杀 MediaMTX→重启 | 10s 内恢复取帧（N5 计时） | F10/N5 |
 | S2 | 断流期间 get_frame | STREAM_LOST，无崩溃 | F10 |
-| S3 | 24h 三后端轮换长稳 | 零崩溃；内存曲线无持续增长（采样判斜率） | A6/N4 |
+| S3 | 24h 长稳（两形态：三后端轮换 / multi 四路并发） | 零崩溃零丢帧；内存曲线无持续增长（采样判斜率） | A6/N4 |
 | S4 | 延迟拍屏法（半自动） | ≤2 帧时间 | N1/A5 |
 
 ### S3 / S4 操作说明
 
-**S3 长稳**：`soak_24h.exe [分钟数]`——三后端轮换（MF/DShow/RTSP 各取 100 帧为轮），每 30s 采样工作集。默认 2 分钟冒烟（进常规回归，仅打印内存不判斜率——首轮组件懒加载的预热增长是正常的）；**夜间验收跑 1440**（24h，判定：失败轮 ≤5%、稳态内存增长 <32 MB）。RTSP 轮的 open/start 失败按 SKIP 计（流服务非受控项，专项由 S1/S2 覆盖）。
+**S3 长稳**：可执行产物为 `test_soak_stability.exe`（CMake target 名，源 `soak_24h.cpp`）。两形态：
+
+- **三后端轮换**（默认，`test_soak_stability.exe [分钟数]`）：MF/DShow/RTSP 各取 100 帧为轮，每 30s 采样工作集。默认 2 分钟冒烟（进常规回归，仅打印内存不判斜率——首轮组件懒加载的预热增长是正常的）；**夜间验收跑 1440**（24h，判定：失败轮 ≤5%、稳态内存增长 <32 MB）。RTSP 轮的 open/start 失败按 SKIP 计（流服务非受控项，专项由 S1/S2 覆盖）
+- **multi 四路并发**（`test_soak_stability.exe <分钟数> multi`）：camera（逐设备尝试）/ display / mic / loopback 四路同开，50ms 短轮询。判定：四路 lost==0；camera/mic/loopback 帧数 ≥ minutes×30；内存斜率 <32 MB。display 只判流不断（静止桌面 TIMEOUT 属正常语义）。**A6 验收采用本形态**（2026-10-31 满程 24h 全绿：四路零丢帧、内存负增长）
 
 **S4 拍屏法**（半自动，需摄像头对着屏幕；操作要点来自 A5 实测）：
 
@@ -173,6 +176,6 @@ MediaMTX 是开源流媒体服务器（Go 编写、单 exe，原名 rtsp-simple-
 | A8 多设备并发 | I12 |
 | N1–N5 | S4/I13/S3/S1 |
 
-## 9. CI 说明（后续可选）
+## 9. CI（已上线）
 
-GitHub Actions 跑 `ctest -L unit`（零环境依赖）+ Release 构建验证；集成/soak 不进 CI（需真实设备与流）。接入时机：M4 完成后按需。
+`.github/workflows/ci.yml`（push/PR 触发，windows-latest 云端跑零设备依赖子集）：FFMPEG=OFF 裁剪构建（FFmpeg 静态库不入库）+ /W4 /WX 零警告 + `ctest -L unit` + dumpbin 导出面 39 符号白名单（`sparkcap_` 前缀 + 计数）+ 无 av*/sw* 第三方依赖检查。全功能构建与 integration/soak（需真实设备与流）仍由维护者本地执行。
