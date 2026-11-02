@@ -15,14 +15,7 @@ Windows 统一采集库——一套 C API，三个采集域全部交付：**摄�
 
 ## 状态
 
-**三域全部交付**：16 项测试（unit 6 + integration 8 + soak 2），DLL 3.7MB，**39 个导出 API**，错误/日志回调齐备。里程碑：
-
-- [x] M1 双后端枚举 + 本地设备取帧
-- [x] M2 统一帧层（环形队列 + 回调模式）
-- [x] M3 FFmpeg 后端 + RTSP 接入
-- [x] M4 硬解（D3D11VA）+ 断流重连 + 稳定性
-- [x] 屏幕域（Spec v1.4 F12–F21）：显示器 + 窗口合并域，双降级链
-- [x] 音频域（Spec v1.5 F22–F26）：麦克风 + 回采，WASAPI 单链
+**三域全部交付**：16 项测试（unit 6 + integration 8 + soak 2），DLL 3.7MB，**39 个导出 API**，错误/日志回调齐备，CI 门禁全绿（构建零警告 / unit / 导出面 / 依赖检查）。
 
 验收进展（见 [路线图](docs/roadmap.md)）：**A6/N4 已收口**（24h multi soak 四路并发全绿，2026-10-31）；挂账仅剩 A5/N1 延迟口径决策（全链路 median 105–113ms，库内占比待拆分），其后即打 v1.0.0 tag。
 
@@ -79,6 +72,8 @@ int main(void)
 
 回调模式：在 `sparkcap_camera_start` 前调用 `sparkcap_camera_set_frame_callback` 注册回调，帧在回调期间有效，跨线程持有须 `sparkcap_copy_frame`。
 
+`examples/` 下有三域完整最小示例（`list_devices` / `capture` / `screen_capture` / `audio_capture`），随库一起构建，可直接编译运行。
+
 ## API 概览
 
 两级结构：通用层 `sparkcap_*` + 域层 `sparkcap_<域>_*`（完整契约见 [Spec §4.1](docs/spec.md)）。
@@ -87,7 +82,7 @@ int main(void)
 
 | 函数 | 说明 |
 |---|---|
-| `sparkcap_version` / `sparkcap_query_features` | 版本字符串 / 功能集位掩码（编译期裁剪探测） |
+| `sparkcap_version` / `sparkcap_query_features` | 版本字符串（含构建元数据 `<sha8>.<日期>`，DLL 与源码 commit 对账）/ 功能集位掩码（编译期裁剪探测） |
 | `sparkcap_create_backend` / `sparkcap_destroy_backend` | 后端实例生命周期 |
 | `sparkcap_set_log_callback` | 日志回调（进程级，FFmpeg av_log 路由） |
 | `sparkcap_copy_frame` / `sparkcap_release_frame` | 视频帧深拷贝与释放 |
